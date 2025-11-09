@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+build
+dist
+.cache
+public
+*.config.js
+*.config.ts
+coverage
+.storybook
+
+
