@@ -185,9 +185,14 @@ export function connectToTrainingConversation(
   onError: (error: Error) => void
 ): WebSocket {
   const wsBase = API_V1_BASE.replace('http://', 'ws://').replace('https://', 'wss://');
-  const wsUrl = `${wsBase}/training/sessions/${sessionId}/conversation`;
   
-  console.log('[TrainingAPI] Connecting to WebSocket:', wsUrl);
+  // Get auth token and add it as query parameter
+  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+  const wsUrl = token 
+    ? `${wsBase}/training/sessions/${sessionId}/conversation?token=${encodeURIComponent(token)}`
+    : `${wsBase}/training/sessions/${sessionId}/conversation`;
+  
+  console.log('[TrainingAPI] Connecting to WebSocket:', wsUrl.split('?')[0] + (token ? '?token=***' : ''));
   const ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {

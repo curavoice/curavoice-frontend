@@ -15,14 +15,23 @@ const nextConfig = {
     // Get API URL from environment variable or use defaults
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://curavoice-backend-production-3ea1.up.railway.app'
     
+    // Extract domain from API URL for WebSocket connections
+    const apiUrlObj = new URL(apiUrl);
+    const wsProtocol = apiUrlObj.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = `${wsProtocol}//${apiUrlObj.host}`;
+    
     // Build connect-src directive for CSP
-    // Allow self, localhost for dev, and Railway backend for production
+    // Allow self, localhost for dev, and Railway backend for production (both HTTP/WS and HTTPS/WSS)
     const connectSrc = [
       "'self'",
       'ws://localhost:8000',
+      'wss://localhost:8000', // Allow WSS for localhost if using HTTPS
       'http://localhost:8000',
-      'https://curavoice-backend-production-3ea1.up.railway.app',
-      'https://*.up.railway.app', // Allow any Railway backend
+      'https://localhost:8000', // Allow HTTPS for localhost
+      apiUrl, // Production API URL (HTTPS)
+      wsHost, // Production WebSocket URL (WSS)
+      'https://*.up.railway.app', // Allow any Railway backend (HTTPS)
+      'wss://*.up.railway.app', // Allow any Railway backend (WSS)
     ].join(' ')
 
     return [
