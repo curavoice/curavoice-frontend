@@ -304,56 +304,56 @@ export default function OSCEFeedback({ sessionId, onClose, viewOnly = false }: O
 
           {/* Empathy Analysis - Only show if available */}
           {evaluation.empathy_analysis && (
-            <div className="border-2 border-pink-200 rounded-lg p-6 bg-gradient-to-br from-pink-50 to-purple-50">
-              <div className="flex items-center gap-2 mb-4">
-                <Heart className="h-6 w-6 text-pink-600" />
-                <h3 className="text-xl font-bold text-pink-900">Empathy Analysis</h3>
-                <span className="ml-auto text-2xl font-bold text-pink-600">
+          <div className="border-2 border-pink-200 rounded-lg p-6 bg-gradient-to-br from-pink-50 to-purple-50">
+            <div className="flex items-center gap-2 mb-4">
+              <Heart className="h-6 w-6 text-pink-600" />
+              <h3 className="text-xl font-bold text-pink-900">Empathy Analysis</h3>
+              <span className="ml-auto text-2xl font-bold text-pink-600">
                   {evaluation.empathy_analysis.score?.toFixed(1) || '0.0'}/5.0
-                </span>
-              </div>
-              
+              </span>
+            </div>
+            
               {evaluation.empathy_analysis.indicators && evaluation.empathy_analysis.indicators.length > 0 && (
-                <div className="mb-4">
-                  <h4 className="font-semibold text-sm text-gray-700 mb-2">Observed Behaviors:</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {evaluation.empathy_analysis.indicators.map((indicator, idx) => (
-                      <span
-                        key={idx}
-                        className="px-3 py-1 bg-white rounded-full text-sm text-pink-700 border border-pink-200"
-                      >
-                        {indicator}
-                      </span>
-                    ))}
-                  </div>
+              <div className="mb-4">
+                <h4 className="font-semibold text-sm text-gray-700 mb-2">Observed Behaviors:</h4>
+                <div className="flex flex-wrap gap-2">
+                  {evaluation.empathy_analysis.indicators.map((indicator, idx) => (
+                    <span
+                      key={idx}
+                      className="px-3 py-1 bg-white rounded-full text-sm text-pink-700 border border-pink-200"
+                    >
+                      {indicator}
+                    </span>
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
               {evaluation.empathy_analysis.positive_examples && evaluation.empathy_analysis.positive_examples.length > 0 && (
-                <div className="mb-4">
-                  <h4 className="font-semibold text-sm text-gray-700 mb-2">Positive Examples:</h4>
-                  <div className="space-y-2">
-                    {evaluation.empathy_analysis.positive_examples.map((example, idx) => (
-                      <div key={idx} className="bg-white rounded-lg p-3 text-sm text-gray-700 border-l-4 border-pink-400">
-                        <MessageCircle className="h-4 w-4 inline mr-2 text-pink-500" />
-                        "{example}"
-                      </div>
-                    ))}
-                  </div>
+              <div className="mb-4">
+                <h4 className="font-semibold text-sm text-gray-700 mb-2">Positive Examples:</h4>
+                <div className="space-y-2">
+                  {evaluation.empathy_analysis.positive_examples.map((example, idx) => (
+                    <div key={idx} className="bg-white rounded-lg p-3 text-sm text-gray-700 border-l-4 border-pink-400">
+                      <MessageCircle className="h-4 w-4 inline mr-2 text-pink-500" />
+                      "{example}"
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
               {evaluation.empathy_analysis.gaps && evaluation.empathy_analysis.gaps.length > 0 && (
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-700 mb-2">Opportunities for Growth:</h4>
-                  <ul className="space-y-1">
-                    {evaluation.empathy_analysis.gaps.map((gap, idx) => (
-                      <li key={idx} className="text-sm text-gray-600 ml-4">• {gap}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
+              <div>
+                <h4 className="font-semibold text-sm text-gray-700 mb-2">Opportunities for Growth:</h4>
+                <ul className="space-y-1">
+                  {evaluation.empathy_analysis.gaps.map((gap, idx) => (
+                    <li key={idx} className="text-sm text-gray-600 ml-4">• {gap}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
           )}
 
         </div>

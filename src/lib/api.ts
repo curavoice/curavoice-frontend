@@ -1,4 +1,18 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+// Get API URL and ensure it doesn't have a trailing slash or /api/v1 prefix
+const getApiUrl = (): string => {
+  // Production backend URL (Railway)
+  const url = process.env.NEXT_PUBLIC_API_URL || 'https://curavoice-backend-production-3ea1.up.railway.app'
+  // Remove trailing slash
+  const cleanUrl = url.replace(/\/$/, '')
+  
+  // Debug logging
+  console.log('[API] NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
+  console.log('[API] Resolved API URL:', cleanUrl);
+  
+  return cleanUrl
+}
+
+const API_URL = getApiUrl()
 
 export interface AuthResponse {
   user: {
@@ -30,7 +44,23 @@ class ApiClient {
   private baseUrl: string
 
   constructor(baseUrl: string) {
-    this.baseUrl = baseUrl
+    // Remove trailing slash and ensure clean base URL
+    this.baseUrl = baseUrl.replace(/\/$/, '')
+  }
+
+  /**
+   * Get the API base URL with /api/v1 prefix
+   * Handles cases where baseUrl might already include /api/v1
+   */
+  private getApiBase(): string {
+    // Remove /api/v1 if it exists at the end to avoid duplication
+    let cleanBase = this.baseUrl.replace(/\/api\/v1\/?$/, '')
+    
+    // Ensure no trailing slash
+    cleanBase = cleanBase.replace(/\/$/, '')
+    
+    // Always append /api/v1 to ensure consistent API path
+    return `${cleanBase}/api/v1`
   }
 
   private getAuthHeaders(): HeadersInit {
@@ -89,45 +119,117 @@ class ApiClient {
   }
 
   async login(data: LoginRequest): Promise<AuthResponse> {
-    const response = await fetch(`${this.baseUrl}/api/v1/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    })
+    const loginUrl = `${this.getApiBase()}/auth/login`;
+    const timestamp = new Date().toISOString();
+    
+    console.log(`[${timestamp}] [API] 🔐 Login attempt started`);
+    console.log(`[${timestamp}] [API] Login URL:`, loginUrl);
+    console.log(`[${timestamp}] [API] Base URL:`, this.baseUrl);
+    console.log(`[${timestamp}] [API] API Base:`, this.getApiBase());
+    console.log(`[${timestamp}] [API] Email:`, data.email);
+    
+    try {
+      const response = await fetch(loginUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(data),
+      })
 
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Login failed')
+      console.log(`[${timestamp}] [API] Response status:`, response.status);
+      console.log(`[${timestamp}] [API] Response headers:`, Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        let errorDetail = 'Login failed';
+        try {
+          const error = await response.json()
+          errorDetail = error.detail || error.message || errorDetail;
+          console.error(`[${timestamp}] [API] ❌ Login failed:`, error);
+        } catch (parseError) {
+          console.error(`[${timestamp}] [API] ❌ Failed to parse error response:`, parseError);
+          errorDetail = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorDetail)
+      }
+
+      const result: AuthResponse = await response.json()
+      console.log(`[${timestamp}] [API] ✅ Login successful for user:`, result.user.email);
+      console.log(`[${timestamp}] [API] User ID:`, result.user.id);
+      console.log(`[${timestamp}] [API] User role:`, result.user.role);
+      
+      this.setToken(result.access_token)
+      this.setRefreshToken(result.refresh_token)
+      this.setUser(result.user)
+      
+      console.log(`[${timestamp}] [API] ✅ Tokens and user data saved to localStorage`);
+      return result
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        console.error(`[${timestamp}] [API] ❌ Network error - cannot reach backend:`, error);
+        throw new Error('Cannot connect to server. Please check your connection and try again.');
+      }
+      console.error(`[${timestamp}] [API] ❌ Login error:`, error);
+      throw error;
     }
-
-    const result: AuthResponse = await response.json()
-    this.setToken(result.access_token)
-    this.setRefreshToken(result.refresh_token)
-    this.setUser(result.user)
-    return result
   }
 
   async register(data: RegisterRequest): Promise<AuthResponse> {
-    const response = await fetch(`${this.baseUrl}/api/v1/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    })
+    const registerUrl = `${this.getApiBase()}/auth/register`;
+    const timestamp = new Date().toISOString();
+    
+    console.log(`[${timestamp}] [API] 📝 Registration attempt started`);
+    console.log(`[${timestamp}] [API] Register URL:`, registerUrl);
+    console.log(`[${timestamp}] [API] Email:`, data.email);
+    console.log(`[${timestamp}] [API] Full name:`, data.full_name);
+    
+    try {
+      const response = await fetch(registerUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(data),
+      })
 
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Registration failed')
+      console.log(`[${timestamp}] [API] Response status:`, response.status);
+
+      if (!response.ok) {
+        let errorDetail = 'Registration failed';
+        try {
+          const error = await response.json()
+          errorDetail = error.detail || error.message || errorDetail;
+          console.error(`[${timestamp}] [API] ❌ Registration failed:`, error);
+        } catch (parseError) {
+          console.error(`[${timestamp}] [API] ❌ Failed to parse error response:`, parseError);
+          errorDetail = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorDetail)
+      }
+
+      const result: AuthResponse = await response.json()
+      console.log(`[${timestamp}] [API] ✅ Registration successful for user:`, result.user.email);
+      
+      this.setToken(result.access_token)
+      this.setRefreshToken(result.refresh_token)
+      this.setUser(result.user)
+      
+      console.log(`[${timestamp}] [API] ✅ Tokens and user data saved to localStorage`);
+      return result
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        console.error(`[${timestamp}] [API] ❌ Network error - cannot reach backend:`, error);
+        throw new Error('Cannot connect to server. Please check your connection and try again.');
+      }
+      console.error(`[${timestamp}] [API] ❌ Registration error:`, error);
+      throw error;
     }
-
-    const result: AuthResponse = await response.json()
-    this.setToken(result.access_token)
-    this.setRefreshToken(result.refresh_token)
-    this.setUser(result.user)
-    return result
   }
 
   async getCurrentUser(): Promise<AuthResponse['user']> {
-    const response = await fetch(`${this.baseUrl}/api/v1/auth/me`, {
+    const response = await fetch(`${this.getApiBase()}/auth/me`, {
       method: 'GET',
       headers: this.getAuthHeaders(),
     })
@@ -147,7 +249,7 @@ class ApiClient {
 
   async evaluateTrainingSession(sessionId: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/training/sessions/${sessionId}/evaluate`, {
+      const response = await fetch(`${this.getApiBase()}/training/sessions/${sessionId}/evaluate`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
       })
@@ -174,7 +276,7 @@ class ApiClient {
   }
 
   async getAllSessions(limit: number = 100, skip: number = 0): Promise<any[]> {
-    const response = await fetch(`${this.baseUrl}/api/v1/training/sessions?limit=${limit}&skip=${skip}`, {
+    const response = await fetch(`${this.getApiBase()}/training/sessions?limit=${limit}&skip=${skip}`, {
       method: 'GET',
       headers: this.getAuthHeaders(),
     })
@@ -188,7 +290,7 @@ class ApiClient {
   }
 
   async getSessionEvaluation(sessionId: string): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/api/v1/training/sessions/${sessionId}/evaluation`, {
+    const response = await fetch(`${this.getApiBase()}/training/sessions/${sessionId}/evaluation`, {
       method: 'GET',
       headers: this.getAuthHeaders(),
     })

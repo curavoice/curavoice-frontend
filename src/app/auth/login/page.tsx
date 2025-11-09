@@ -24,23 +24,53 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const timestamp = new Date().toISOString()
+    
+    console.log(`[${timestamp}] [LOGIN] 🔐 Login form submitted`)
+    console.log(`[${timestamp}] [LOGIN] Email:`, email)
+    console.log(`[${timestamp}] [LOGIN] Password length:`, password.length)
+    
     setLoading(true)
 
     try {
-      await apiClient.login({ email, password })
+      console.log(`[${timestamp}] [LOGIN] Calling apiClient.login()...`)
+      const result = await apiClient.login({ email, password })
+      
+      console.log(`[${timestamp}] [LOGIN] ✅ Login successful!`)
+      console.log(`[${timestamp}] [LOGIN] User:`, result.user.email)
+      console.log(`[${timestamp}] [LOGIN] Redirecting to dashboard...`)
+      
       toast({
         title: 'Success',
         description: 'Signed in successfully!',
       })
+      
       router.push('/dashboard')
     } catch (error: any) {
+      console.error(`[${timestamp}] [LOGIN] ❌ Login failed:`, error)
+      console.error(`[${timestamp}] [LOGIN] Error name:`, error.name)
+      console.error(`[${timestamp}] [LOGIN] Error message:`, error.message)
+      console.error(`[${timestamp}] [LOGIN] Error stack:`, error.stack)
+      
+      let errorMessage = error.message || 'An unexpected error occurred'
+      
+      // Provide more helpful error messages
+      if (error.message?.includes('Cannot connect to server')) {
+        errorMessage = 'Cannot connect to server. Please ensure the backend is running.'
+      } else if (error.message?.includes('Failed to fetch')) {
+        errorMessage = 'Network error. Please check your internet connection and backend server.'
+      } else if (error.message?.includes('Incorrect email or password')) {
+        errorMessage = 'Incorrect email or password. Please try again.'
+      }
+      
       toast({
-        title: 'Error',
-        description: error.message || 'An unexpected error occurred',
+        title: 'Login Failed',
+        description: errorMessage,
         variant: 'destructive',
       })
     } finally {
       setLoading(false)
+      console.log(`[${timestamp}] [LOGIN] Loading state set to false`)
     }
   }
 
