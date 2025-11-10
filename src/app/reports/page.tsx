@@ -23,6 +23,7 @@ import {
   TrendingDown
 } from 'lucide-react'
 import { apiClient } from '@/lib/api'
+import { formatScenarioTitle } from '@/lib/utils'
 
 interface TrainingSession {
   id: string
@@ -364,7 +365,7 @@ export default function ReportsPage() {
                         <BarChart3 className="w-5 h-5" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="reports-session-title">{session.scenario_title}</h3>
+                        <h3 className="reports-session-title">{formatScenarioTitle(session.scenario_title)}</h3>
                         <div className="reports-session-meta">
                           <span className="flex items-center gap-1">
                             <Calendar className="w-3 h-3" />

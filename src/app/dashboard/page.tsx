@@ -8,6 +8,7 @@ import EchoIcon from '@/components/icons/Echo'
 import EchoLoader from '@/components/EchoLoader'
 import Image from 'next/image'
 import { TrendingUp, TrendingDown, Minus, ChevronRight, X } from 'lucide-react'
+import { formatScenarioTitle } from '@/lib/utils'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -295,7 +296,7 @@ export default function DashboardPage() {
               <>
                 <div className="mb-3">
                   <p className="text-sm text-gray-600 mb-1">
-                    <strong>{recentFeedback.scenario_title}</strong> - Score: {recentFeedback.score}%
+                    <strong>{formatScenarioTitle(recentFeedback.scenario_title)}</strong> - Score: {recentFeedback.score}%
                   </p>
                   <p className="feedback-text">
                     {recentFeedback.feedback_summary || 'Great session! Keep practicing to improve your skills.'}

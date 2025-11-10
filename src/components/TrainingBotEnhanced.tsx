@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { Mic, MicOff, RotateCcw, AlertCircle, Award } from 'lucide-react'
 import { useTrainingSession } from '@/hooks/useTrainingSession'
 import OSCEFeedback from './OSCEFeedback'
+import { formatScenarioTitle } from '@/lib/utils'
 
 interface Scenario {
   id: string
@@ -60,11 +61,8 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
   const formatCategoryName = (category: string): string => {
     if (category === 'random') return 'Random Scenario';
     if (category === 'otc') return 'OTC Scenario';
-    if (category === 'pain_management') return 'Pain Management Scenario';
-    if (category === 'mental_health') return 'Mental Health Scenario';
-    if (category === 'womens_health') return "Women's Health Scenario";
-    // Capitalize first letter and add "Scenario"
-    return `${category.charAt(0).toUpperCase() + category.slice(1).replace(/_/g, ' ')} Scenario`;
+    // Use formatScenarioTitle for categories with underscores
+    return formatScenarioTitle(category) + ' Scenario';
   }
 
   const formatTime = (seconds: number) => {
@@ -328,7 +326,7 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
                   {useCustomScenario 
                     ? 'Start Custom Scenario' 
                     : mode === 'clinical'
-                    ? `Start ${medicalCategory === 'random' ? 'Random' : medicalCategory.charAt(0).toUpperCase() + medicalCategory.slice(1)} Scenario`
+                    ? `Start ${medicalCategory === 'random' ? 'Random' : formatScenarioTitle(medicalCategory)} Scenario`
                     : 'Start Nonclinical Scenario'}
                 </button>
               </div>
@@ -356,7 +354,7 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
               {/* Current Scenario Badge */}
               <div className="voice-bot-scenario-badge">
                 <span className="voice-bot-badge-text">
-                  {selectedScenario || (selectedCategory ? formatCategoryName(selectedCategory) : session?.scenario_title) || 'Training Session'}
+                  {selectedScenario || (selectedCategory ? formatCategoryName(selectedCategory) : formatScenarioTitle(session?.scenario_title)) || 'Training Session'}
                 </span>
               </div>
 

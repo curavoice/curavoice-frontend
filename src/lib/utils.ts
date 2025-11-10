@@ -30,4 +30,27 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
   }
 }
 
+/**
+ * Formats a scenario title by converting underscores to spaces and title casing.
+ * Examples:
+ * - "pain_management" -> "Pain Management"
+ * - "mental_health" -> "Mental Health"
+ * - "womens_health" -> "Womens Health"
+ * - "Start Pain_management Scenario" -> "Start Pain Management Scenario"
+ */
+export function formatScenarioTitle(title: string | null | undefined): string {
+  if (!title) return 'Training Session'
+  
+  // Replace underscores with spaces and split into words
+  const words = title.replace(/_/g, ' ').split(/\s+/)
+  
+  // Title case each word (capitalize first letter, lowercase rest)
+  const formattedWords = words.map(word => {
+    if (word.length === 0) return word
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  })
+  
+  return formattedWords.join(' ')
+}
+
 

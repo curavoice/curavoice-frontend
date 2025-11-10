@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { ArrowLeft, Calendar, Clock, MessageCircle, Award, Volume2, Play, Pause, User, Bot } from 'lucide-react'
+import { formatScenarioTitle } from '@/lib/utils'
 
 interface Session {
   session_id: string
@@ -245,7 +246,7 @@ export default function UserSessionsPage() {
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <h3 className="font-semibold text-gray-900 mb-1">{session.scenario_title}</h3>
+                      <h3 className="font-semibold text-gray-900 mb-1">{formatScenarioTitle(session.scenario_title)}</h3>
                       <p className="text-sm text-gray-600">{session.category}</p>
                     </div>
                     {session.evaluation_score !== null && (
@@ -297,7 +298,7 @@ export default function UserSessionsPage() {
             ) : selectedSession ? (
               <div className="bg-white rounded-lg shadow">
                 <div className="p-6 border-b">
-                  <h2 className="text-xl font-bold text-gray-900 mb-2">{selectedSession.scenario.title}</h2>
+                  <h2 className="text-xl font-bold text-gray-900 mb-2">{formatScenarioTitle(selectedSession.scenario.title)}</h2>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <span className="px-2 py-1 bg-gray-100 rounded">{selectedSession.scenario.category}</span>
                     <span className="px-2 py-1 bg-gray-100 rounded">{selectedSession.scenario.patient_mood}</span>
