@@ -1,5 +1,6 @@
 /**
  * Custom hook for managing training sessions with comprehensive logging
+ * Enhanced with mobile optimizations: Safari/iOS support, ping/pong, auto-reconnection
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -9,8 +10,18 @@ import {
   endTrainingSession,
   sendAudioToTraining,
   TrainingSession,
-  CreateSessionRequest
+  CreateSessionRequest,
+  WebSocketManager
 } from '@/lib/trainingApi';
+import {
+  getOptimalAudioMimeType,
+  getOptimalAudioBitrate,
+  getBatteryAwareBitrate,
+  initializeAudioContext,
+  WakeLockManager,
+  setupVisibilityChangeHandler,
+  logMobileOptimizationInfo
+} from '@/lib/mobileOptimizations';
 
 interface UseTrainingSessionReturn {
   session: TrainingSession | null;
@@ -30,13 +41,15 @@ export function useTrainingSession(): UseTrainingSessionReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  const wsRef = useRef<WebSocket | null>(null);
+
+  const wsManagerRef = useRef<WebSocketManager | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioQueueRef = useRef<Blob[]>([]);
   const isPlayingRef = useRef(false);
   const audioChunksRef = useRef<Blob[]>([]); // Accumulate audio chunks before sending
+  const wakeLockManagerRef = useRef<WakeLockManager | null>(null);
+  const visibilityCleanupRef = useRef<(() => void) | null>(null);
 
   // Log everything for debugging
   useEffect(() => {
@@ -49,6 +62,60 @@ export function useTrainingSession(): UseTrainingSessionReturn {
       error
     });
   }, [session, isConnected, isRecording, isSpeaking, error]);
+
+  // Initialize mobile optimizations on mount
+  useEffect(() => {
+    console.log('[Mobile Optimization] Initializing...');
+    logMobileOptimizationInfo();
+
+    // Initialize wake lock manager
+    wakeLockManagerRef.current = new WakeLockManager();
+
+    // Setup background/foreground handling
+    visibilityCleanupRef.current = setupVisibilityChangeHandler(
+      () => {
+        // App backgrounded - pause recording
+        console.log('[Mobile] App backgrounded');
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          console.log('[Mobile] Pausing recording due to background');
+          try {
+            mediaRecorderRef.current.pause();
+          } catch (err) {
+            console.error('[Mobile] Failed to pause recording:', err);
+          }
+        }
+      },
+      () => {
+        // App foregrounded - resume recording
+        console.log('[Mobile] App foregrounded');
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
+          console.log('[Mobile] Resuming recording');
+          try {
+            mediaRecorderRef.current.resume();
+          } catch (err) {
+            console.error('[Mobile] Failed to resume recording:', err);
+          }
+        }
+
+        // Ensure AudioContext is running
+        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          console.log('[Mobile] Resuming AudioContext');
+          audioContextRef.current.resume();
+        }
+      }
+    );
+
+    // Cleanup on unmount
+    return () => {
+      console.log('[Mobile Optimization] Cleaning up...');
+      if (visibilityCleanupRef.current) {
+        visibilityCleanupRef.current();
+      }
+      if (wakeLockManagerRef.current) {
+        wakeLockManagerRef.current.release();
+      }
+    };
+  }, []);
 
   // Play audio from queue
   const playNextInQueue = useCallback(async () => {
@@ -120,9 +187,15 @@ export function useTrainingSession(): UseTrainingSessionReturn {
     });
 
     if (!audioContextRef.current) {
-      console.log('[WebSocket Audio] Creating new AudioContext...');
+      console.log('[WebSocket Audio] Creating new AudioContext (iOS-compatible)...');
       try {
-        audioContextRef.current = new AudioContext();
+        const context = await initializeAudioContext();
+        if (!context) {
+          console.error('[WebSocket Audio] Failed to initialize AudioContext');
+          setError('Failed to initialize audio playback');
+          return;
+        }
+        audioContextRef.current = context;
         console.log('[WebSocket Audio] AudioContext created:', {
           sampleRate: audioContextRef.current.sampleRate,
           state: audioContextRef.current.state
@@ -134,7 +207,7 @@ export function useTrainingSession(): UseTrainingSessionReturn {
       }
     }
 
-    // Resume AudioContext if suspended (browser autoplay policy)
+    // Resume AudioContext if suspended (browser autoplay policy / iOS)
     if (audioContextRef.current.state === 'suspended') {
       console.log('[WebSocket Audio] AudioContext suspended, attempting to resume...');
       try {
@@ -147,7 +220,7 @@ export function useTrainingSession(): UseTrainingSessionReturn {
 
     audioQueueRef.current.push(audioBlob);
     console.log('[WebSocket Audio] Added to queue, total in queue:', audioQueueRef.current.length);
-    
+
     if (!isPlayingRef.current) {
       console.log('[WebSocket Audio] Queue not playing, starting playback...');
       playNextInQueue();
@@ -161,7 +234,13 @@ export function useTrainingSession(): UseTrainingSessionReturn {
     console.log('[Session] Starting new training session with request:', request);
     try {
       setError(null);
-      
+
+      // Request wake lock to prevent screen sleep
+      if (wakeLockManagerRef.current) {
+        console.log('[Session] Requesting wake lock...');
+        await wakeLockManagerRef.current.request();
+      }
+
       // 1. Create session
       console.log('[Session] Creating session via API...');
       const newSession = await createTrainingSession(request || {});
@@ -172,10 +251,10 @@ export function useTrainingSession(): UseTrainingSessionReturn {
         category: newSession.category
       });
       setSession(newSession);
-      
-      // 2. Connect WebSocket
+
+      // 2. Connect WebSocket with auto-reconnection
       console.log('[WebSocket] Connecting to session:', newSession.id);
-      const ws = connectToTrainingConversation(
+      const wsManager = connectToTrainingConversation(
         newSession.id,
         (data) => {
           console.log('[WebSocket Message] Received:', data);
@@ -208,12 +287,22 @@ export function useTrainingSession(): UseTrainingSessionReturn {
             setError(err.message);
           }
           setIsConnected(false);
+        },
+        (attempt) => {
+          // On reconnecting
+          console.log(`[WebSocket] Reconnection attempt ${attempt}...`);
+          setIsConnected(false);
+        },
+        () => {
+          // On reconnected
+          console.log('[WebSocket] Successfully reconnected!');
+          setIsConnected(true);
         }
       );
-      
-      wsRef.current = ws;
-      console.log('[WebSocket] Connection initiated, readyState:', ws.readyState);
-      
+
+      wsManagerRef.current = wsManager;
+      console.log('[WebSocket] WebSocketManager created and connecting...');
+
     } catch (err) {
       console.error('[Session] Failed to start:', err);
       setError(err instanceof Error ? err.message : 'Failed to start session');
@@ -236,11 +325,17 @@ export function useTrainingSession(): UseTrainingSessionReturn {
         setIsRecording(false);
       }
 
-      // Close WebSocket
-      if (wsRef.current) {
+      // Close WebSocket (using WebSocketManager)
+      if (wsManagerRef.current) {
         console.log('[WebSocket] Closing connection...');
-        wsRef.current.close();
-        wsRef.current = null;
+        wsManagerRef.current.close();
+        wsManagerRef.current = null;
+      }
+
+      // Release wake lock
+      if (wakeLockManagerRef.current) {
+        console.log('[Session] Releasing wake lock...');
+        wakeLockManagerRef.current.release();
       }
 
       // End session
@@ -262,7 +357,7 @@ export function useTrainingSession(): UseTrainingSessionReturn {
       setSession(null);
       setIsSpeaking(false);
       console.log('[Session] Session stopped successfully');
-      
+
     } catch (err) {
       console.error('[Session] Error stopping session:', err);
       setError(err instanceof Error ? err.message : 'Failed to stop session');
@@ -272,20 +367,38 @@ export function useTrainingSession(): UseTrainingSessionReturn {
   // Start recording user audio
   const startRecording = useCallback(async () => {
     console.log('[Recording] Requesting microphone access...');
-    
+
+    // Initialize AudioContext for iOS (must be called on user interaction)
+    if (!audioContextRef.current) {
+      console.log('[Recording] Initializing AudioContext for iOS...');
+      const context = await initializeAudioContext();
+      if (context) {
+        audioContextRef.current = context;
+      }
+    }
+
     // Clear any previous audio chunks
     audioChunksRef.current = [];
     console.log('[Recording] Cleared previous audio chunks');
-    
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      // Detect optimal audio format for this browser
+      const mimeType = getOptimalAudioMimeType();
+
+      // Detect optimal bitrate based on network quality and battery
+      let bitrate = getOptimalAudioBitrate();
+      bitrate = await getBatteryAwareBitrate(bitrate);
+
+      console.log('[Recording] Optimal settings:', { mimeType, bitrate });
+
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: 16000,
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-        } 
+        }
       });
 
       console.log('[Recording] Microphone access granted');
@@ -296,15 +409,10 @@ export function useTrainingSession(): UseTrainingSessionReturn {
         muted: t.muted
       })));
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : 'audio/mp4';
-      
-      console.log('[Recording] Using mimeType:', mimeType);
-
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType,
+        audioBitsPerSecond: bitrate
+      });
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -312,7 +420,7 @@ export function useTrainingSession(): UseTrainingSessionReturn {
             size: event.data.size,
             type: event.data.type
           });
-          
+
           // Accumulate chunks instead of sending immediately
           audioChunksRef.current.push(event.data);
           console.log('[Recording] Accumulated chunks:', audioChunksRef.current.length, 'Total size:', audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0));
@@ -336,7 +444,7 @@ export function useTrainingSession(): UseTrainingSessionReturn {
       mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
       console.log('[Recording] Recording started successfully');
-      
+
     } catch (err) {
       console.error('[Recording] Failed to access microphone:', err);
       setError('Failed to access microphone. Please check permissions.');
@@ -349,27 +457,27 @@ export function useTrainingSession(): UseTrainingSessionReturn {
     if (mediaRecorderRef.current) {
       try {
         mediaRecorderRef.current.stop();
-        
+
         // Send accumulated audio chunks
-        if (audioChunksRef.current.length > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+        if (audioChunksRef.current.length > 0 && wsManagerRef.current?.isConnected()) {
           const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0);
           console.log('[Recording] Combining', audioChunksRef.current.length, 'chunks, total size:', totalSize);
-          
+
           // Combine all chunks into one blob
           const combinedBlob = new Blob(audioChunksRef.current, { type: audioChunksRef.current[0].type });
           console.log('[Recording] Combined blob size:', combinedBlob.size, 'type:', combinedBlob.type);
-          
+
           console.log('[Recording] Sending combined audio to server...');
-          sendAudioToTraining(wsRef.current, combinedBlob);
-          
+          sendAudioToTraining(wsManagerRef.current, combinedBlob);
+
           // Clear chunks for next recording
           audioChunksRef.current = [];
         } else if (audioChunksRef.current.length === 0) {
           console.warn('[Recording] No audio chunks to send');
         } else {
-          console.warn('[Recording] WebSocket not open, cannot send audio. State:', wsRef.current?.readyState);
+          console.warn('[Recording] WebSocket not connected, cannot send audio');
         }
-        
+
         mediaRecorderRef.current.stream.getTracks().forEach(track => {
           console.log('[Recording] Stopping track:', track.kind);
           track.stop();

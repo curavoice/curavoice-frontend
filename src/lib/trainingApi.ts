@@ -176,103 +176,252 @@ export async function deleteTrainingSession(sessionId: string): Promise<void> {
 }
 
 /**
- * Connect to training conversation WebSocket
+ * WebSocket connection manager with ping/pong and auto-reconnection
+ */
+export class WebSocketManager {
+  private ws: WebSocket | null = null;
+  private pingInterval: NodeJS.Timeout | null = null;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private isManualClose = false;
+  private sessionId: string;
+  private onMessage: (data: any) => void;
+  private onAudio: (audioBlob: Blob) => void;
+  private onError: (error: Error) => void;
+  private onReconnecting?: (attempt: number) => void;
+  private onReconnected?: () => void;
+
+  constructor(
+    sessionId: string,
+    onMessage: (data: any) => void,
+    onAudio: (audioBlob: Blob) => void,
+    onError: (error: Error) => void,
+    onReconnecting?: (attempt: number) => void,
+    onReconnected?: () => void
+  ) {
+    this.sessionId = sessionId;
+    this.onMessage = onMessage;
+    this.onAudio = onAudio;
+    this.onError = onError;
+    this.onReconnecting = onReconnecting;
+    this.onReconnected = onReconnected;
+  }
+
+  connect(): WebSocket {
+    const wsBase = API_V1_BASE.replace('http://', 'ws://').replace('https://', 'wss://');
+
+    // Get auth token and add it as query parameter
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+    const wsUrl = token
+      ? `${wsBase}/training/sessions/${this.sessionId}/conversation?token=${encodeURIComponent(token)}`
+      : `${wsBase}/training/sessions/${this.sessionId}/conversation`;
+
+    console.log('[WebSocket] Connecting:', wsUrl.split('?')[0] + (token ? '?token=***' : ''));
+    this.ws = new WebSocket(wsUrl);
+
+    this.ws.onopen = () => {
+      console.log('[WebSocket] ✅ OPENED - Connected to session:', this.sessionId);
+      console.log('[WebSocket] ReadyState:', this.ws?.readyState);
+
+      // Reset reconnection attempts on successful connection
+      this.reconnectAttempts = 0;
+
+      // Start ping/pong to keep connection alive (every 30 seconds)
+      this.startPingPong();
+
+      // Notify reconnection success if this was a reconnect
+      if (this.reconnectAttempts > 0 && this.onReconnected) {
+        this.onReconnected();
+      }
+    };
+
+    this.ws.onmessage = (event) => {
+      // console.log('[WebSocket] Message received, type:', typeof event.data);
+
+      if (event.data instanceof Blob) {
+        // Audio data
+        console.log('[WebSocket] 📥 Received audio blob:', {
+          size: event.data.size,
+          type: event.data.type
+        });
+        this.onAudio(event.data);
+      } else {
+        // JSON message
+        // console.log('[WebSocket] 📥 Received text:', event.data);
+        try {
+          const data = JSON.parse(event.data);
+
+          // Handle pong response
+          if (data.type === 'pong') {
+            console.log('[WebSocket] 📥 Pong received - connection alive');
+            return;
+          }
+
+          console.log('[WebSocket] 📥 Parsed message:', data);
+          this.onMessage(data);
+        } catch (error) {
+          console.error('[WebSocket] ❌ Failed to parse message:', error, 'Raw:', event.data);
+        }
+      }
+    };
+
+    this.ws.onerror = (event) => {
+      console.error('[WebSocket] ❌ ERROR:', event);
+      console.error('[WebSocket] ReadyState:', this.ws?.readyState);
+      this.onError(new Error('WebSocket connection error'));
+    };
+
+    this.ws.onclose = (event) => {
+      console.log('[WebSocket] ❌ CLOSED:', {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        readyState: this.ws?.readyState,
+        isManualClose: this.isManualClose
+      });
+
+      // Stop ping/pong
+      this.stopPingPong();
+
+      // WebSocket close codes:
+      // 1000 = Normal Closure (expected)
+      // 1001 = Going Away (expected - server shutting down)
+      // 1006 = Abnormal Closure (connection lost - network issue)
+      // 1011 = Internal Server Error (server error)
+
+      const isExpectedClose = event.code === 1000 || event.code === 1001 || this.isManualClose;
+      const isNetworkIssue = event.code === 1006;
+      const isServerError = event.code === 1011;
+
+      if (isExpectedClose) {
+        console.log('[WebSocket] Closed normally, no reconnection');
+      } else if (isNetworkIssue && !this.isManualClose) {
+        console.warn('[WebSocket] ⚠️ Connection lost (network issue), attempting reconnection...');
+        this.attemptReconnect();
+      } else if (isServerError) {
+        console.error('[WebSocket] Server error:', event.reason);
+        this.onError(new Error(`Server error: ${event.reason || 'Internal server error'}`));
+      } else if (!this.isManualClose) {
+        console.warn('[WebSocket] Unexpected closure:', event.code, event.reason);
+        this.attemptReconnect();
+      }
+    };
+
+    return this.ws;
+  }
+
+  private startPingPong() {
+    this.stopPingPong(); // Clear any existing interval
+
+    this.pingInterval = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        console.log('[WebSocket] 📤 Ping sent');
+        this.ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 30000); // 30 seconds
+
+    console.log('[WebSocket] ⏰ Ping/pong started (30s interval)');
+  }
+
+  private stopPingPong() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+      console.log('[WebSocket] ⏰ Ping/pong stopped');
+    }
+  }
+
+  private attemptReconnect() {
+    // Don't reconnect if manually closed or max attempts reached
+    if (this.isManualClose || this.reconnectAttempts >= this.maxReconnectAttempts) {
+      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        console.error('[WebSocket] ❌ Max reconnection attempts reached');
+        this.onError(new Error('Connection lost. Please refresh the page.'));
+      }
+      return;
+    }
+
+    // Exponential backoff: 2s, 4s, 8s, 16s, 32s
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 32000);
+    this.reconnectAttempts++;
+
+    console.log(`[WebSocket] 🔄 Reconnecting in ${delay/1000}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+
+    if (this.onReconnecting) {
+      this.onReconnecting(this.reconnectAttempts);
+    }
+
+    this.reconnectTimeout = setTimeout(() => {
+      console.log('[WebSocket] 🔄 Attempting to reconnect...');
+      this.connect();
+    }, delay);
+  }
+
+  send(data: string | Blob | ArrayBuffer) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(data);
+    } else {
+      console.warn('[WebSocket] ⚠️ Cannot send, not connected. State:', this.ws?.readyState);
+    }
+  }
+
+  close() {
+    console.log('[WebSocket] Manual close requested');
+    this.isManualClose = true;
+    this.stopPingPong();
+
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+  }
+
+  getWebSocket(): WebSocket | null {
+    return this.ws;
+  }
+
+  isConnected(): boolean {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+}
+
+/**
+ * Connect to training conversation WebSocket (with ping/pong and auto-reconnection)
  */
 export function connectToTrainingConversation(
   sessionId: string,
   onMessage: (data: any) => void,
   onAudio: (audioBlob: Blob) => void,
-  onError: (error: Error) => void
-): WebSocket {
-  const wsBase = API_V1_BASE.replace('http://', 'ws://').replace('https://', 'wss://');
-  
-  // Get auth token and add it as query parameter
-  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-  const wsUrl = token 
-    ? `${wsBase}/training/sessions/${sessionId}/conversation?token=${encodeURIComponent(token)}`
-    : `${wsBase}/training/sessions/${sessionId}/conversation`;
-  
-  console.log('[TrainingAPI] Connecting to WebSocket:', wsUrl.split('?')[0] + (token ? '?token=***' : ''));
-  const ws = new WebSocket(wsUrl);
+  onError: (error: Error) => void,
+  onReconnecting?: (attempt: number) => void,
+  onReconnected?: () => void
+): WebSocketManager {
+  const wsManager = new WebSocketManager(
+    sessionId,
+    onMessage,
+    onAudio,
+    onError,
+    onReconnecting,
+    onReconnected
+  );
 
-  ws.onopen = () => {
-    console.log('[TrainingAPI] WebSocket OPENED - Connected to training session:', sessionId);
-    console.log('[TrainingAPI] WebSocket readyState:', ws.readyState);
-  };
-
-  ws.onmessage = (event) => {
-    console.log('[TrainingAPI] WebSocket message received, type:', typeof event.data);
-    
-    if (event.data instanceof Blob) {
-      // Audio data
-      console.log('[TrainingAPI] Received audio blob:', {
-        size: event.data.size,
-        type: event.data.type
-      });
-      onAudio(event.data);
-    } else {
-      // JSON message
-      console.log('[TrainingAPI] Received text message:', event.data);
-      try {
-        const data = JSON.parse(event.data);
-        console.log('[TrainingAPI] Parsed message:', data);
-        onMessage(data);
-      } catch (error) {
-        console.error('[TrainingAPI] Failed to parse message:', error, 'Raw data:', event.data);
-      }
-    }
-  };
-
-  ws.onerror = (event) => {
-    console.error('[TrainingAPI] WebSocket ERROR:', event);
-    console.error('[TrainingAPI] WebSocket readyState:', ws.readyState);
-    onError(new Error('WebSocket connection error'));
-  };
-
-  ws.onclose = (event) => {
-    console.log('[TrainingAPI] WebSocket CLOSED:', {
-      code: event.code,
-      reason: event.reason,
-      wasClean: event.wasClean,
-      readyState: ws.readyState
-    });
-    // WebSocket close codes:
-    // 1000 = Normal Closure (expected)
-    // 1001 = Going Away (expected - server shutting down)
-    // 1006 = Abnormal Closure (connection lost - network issue, don't treat as error)
-    // 1011 = Internal Server Error (server error)
-    // 1008 = Policy Violation
-    // Others = Unexpected
-    
-    const isExpectedClose = event.code === 1000 || event.code === 1001;
-    const isNetworkIssue = event.code === 1006;
-    const isServerError = event.code === 1011;
-    
-    if (isExpectedClose) {
-      console.log('[TrainingAPI] WebSocket closed normally');
-    } else if (isNetworkIssue) {
-      console.warn('[TrainingAPI] WebSocket connection lost (network issue)');
-      // Don't call onError for network issues - user might reconnect
-    } else if (isServerError) {
-      console.error('[TrainingAPI] WebSocket closed due to server error:', event.reason);
-      onError(new Error(`Server error: ${event.reason || 'Internal server error'}`));
-    } else {
-      console.warn('[TrainingAPI] WebSocket closed unexpectedly:', event.code, event.reason);
-      // Only show error for truly unexpected closures
-      if (event.code !== 1006) {
-        onError(new Error(`WebSocket closed: ${event.reason || `Code ${event.code}`}`));
-      }
-    }
-  };
-
-  return ws;
+  wsManager.connect();
+  return wsManager;
 }
 
 /**
  * Send audio data to training conversation
  */
-export function sendAudioToTraining(ws: WebSocket, audioData: Blob | ArrayBuffer) {
-  if (ws.readyState === WebSocket.OPEN) {
+export function sendAudioToTraining(ws: WebSocket | WebSocketManager, audioData: Blob | ArrayBuffer) {
+  if (ws instanceof WebSocketManager) {
+    ws.send(audioData);
+  } else if (ws.readyState === WebSocket.OPEN) {
     ws.send(audioData);
   }
 }
@@ -280,12 +429,16 @@ export function sendAudioToTraining(ws: WebSocket, audioData: Blob | ArrayBuffer
 /**
  * Send text message to training conversation
  */
-export function sendTextToTraining(ws: WebSocket, text: string) {
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
-      type: 'text',
-      text: text
-    }));
+export function sendTextToTraining(ws: WebSocket | WebSocketManager, text: string) {
+  const message = JSON.stringify({
+    type: 'text',
+    text: text
+  });
+
+  if (ws instanceof WebSocketManager) {
+    ws.send(message);
+  } else if (ws.readyState === WebSocket.OPEN) {
+    ws.send(message);
   }
 }
 
