@@ -24,6 +24,7 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
     isConnected,
     isRecording,
     isSpeaking,
+    isTransitioning,
     error,
     startSession,
     stopSession,
@@ -100,13 +101,18 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
   }
 
   const handleToggleMicrophone = () => {
-    console.log('[TrainingBot] Toggle microphone, current state:', { isRecording, isConnected });
-    
+    console.log('[TrainingBot] Toggle microphone, current state:', { isRecording, isConnected, isTransitioning });
+
     if (!isConnected) {
       console.warn('[TrainingBot] Cannot toggle mic - not connected');
       return;
     }
-    
+
+    if (isTransitioning) {
+      console.warn('[TrainingBot] Cannot toggle mic - already transitioning');
+      return;
+    }
+
     if (isRecording) {
       console.log('[TrainingBot] Stopping recording...');
       stopRecording();
@@ -407,7 +413,7 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
                 <button
                   onClick={handleToggleMicrophone}
                   className={`voice-bot-mic-main ${isRecording ? 'active' : ''}`}
-                  disabled={!isConnected || isSpeaking}
+                  disabled={!isConnected || isSpeaking || isTransitioning}
                   aria-label={isRecording ? 'Stop speaking' : 'Start speaking'}
                 >
                   <div className="voice-bot-mic-inner">

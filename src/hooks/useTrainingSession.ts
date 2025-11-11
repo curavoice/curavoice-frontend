@@ -17,6 +17,7 @@ interface UseTrainingSessionReturn {
   isConnected: boolean;
   isRecording: boolean;
   isSpeaking: boolean;
+  isTransitioning: boolean;
   error: string | null;
   startSession: (request?: CreateSessionRequest) => Promise<void>;
   stopSession: () => Promise<void>;
@@ -29,6 +30,7 @@ export function useTrainingSession(): UseTrainingSessionReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const wsRef = useRef<WebSocket | null>(null);
@@ -271,12 +273,19 @@ export function useTrainingSession(): UseTrainingSessionReturn {
 
   // Start recording user audio
   const startRecording = useCallback(async () => {
+    // Prevent multiple simultaneous recording attempts
+    if (isTransitioning) {
+      console.warn('[Recording] Already transitioning, ignoring start request');
+      return;
+    }
+
     console.log('[Recording] Requesting microphone access...');
-    
+    setIsTransitioning(true);
+
     // Clear any previous audio chunks
     audioChunksRef.current = [];
     console.log('[Recording] Cleared previous audio chunks');
-    
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
@@ -335,17 +344,27 @@ export function useTrainingSession(): UseTrainingSessionReturn {
       mediaRecorder.start(100);
       mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
+      setIsTransitioning(false);
       console.log('[Recording] Recording started successfully');
-      
+
     } catch (err) {
       console.error('[Recording] Failed to access microphone:', err);
       setError('Failed to access microphone. Please check permissions.');
+      setIsTransitioning(false);
     }
-  }, []);
+  }, [isTransitioning]);
 
   // Stop recording user audio
   const stopRecording = useCallback(() => {
+    // Prevent multiple simultaneous stop attempts
+    if (isTransitioning) {
+      console.warn('[Recording] Already transitioning, ignoring stop request');
+      return;
+    }
+
     console.log('[Recording] Stopping recording...');
+    setIsTransitioning(true);
+
     if (mediaRecorderRef.current) {
       try {
         mediaRecorderRef.current.stop();
@@ -376,20 +395,24 @@ export function useTrainingSession(): UseTrainingSessionReturn {
         });
         mediaRecorderRef.current = null;
         setIsRecording(false);
+        setIsTransitioning(false);
         console.log('[Recording] Recording stopped successfully');
       } catch (err) {
         console.error('[Recording] Error stopping recording:', err);
+        setIsTransitioning(false);
       }
     } else {
       console.warn('[Recording] No active MediaRecorder to stop');
+      setIsTransitioning(false);
     }
-  }, []);
+  }, [isTransitioning]);
 
   return {
     session,
     isConnected,
     isRecording,
     isSpeaking,
+    isTransitioning,
     error,
     startSession,
     stopSession,
