@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, CheckCircle2, AlertCircle, TrendingUp, Award, Heart, MessageCircle } from 'lucide-react'
+import { X, CheckCircle2, AlertCircle, TrendingUp, Award, Heart, MessageCircle, BarChart3, Target, Lightbulb } from 'lucide-react'
 import EchoLoader from '@/components/EchoLoader'
 import ProductFeedback from '@/components/ProductFeedback'
+import { useAuth } from '@/hooks/useAuth'
+import { apiClient } from '@/lib/api'
 
 interface OSCEEvaluation {
   overall_score: number
@@ -61,6 +63,10 @@ export default function OSCEFeedback({ sessionId, onClose, viewOnly = false }: O
   const [error, setError] = useState<string | null>(null)
   const [showProductFeedback, setShowProductFeedback] = useState(false)
   const [shouldShowFeedback, setShouldShowFeedback] = useState(false)
+  const [insights, setInsights] = useState<any>(null)
+  const [trends, setTrends] = useState<any>(null)
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false)
+  const { user } = useAuth()
 
   // Determine if we should show product feedback (30% chance, but not in view-only mode)
   useEffect(() => {
@@ -73,6 +79,32 @@ export default function OSCEFeedback({ sessionId, onClose, viewOnly = false }: O
   useEffect(() => {
     fetchEvaluation()
   }, [sessionId, viewOnly])
+
+  // Fetch analytics data when evaluation is loaded
+  useEffect(() => {
+    if (evaluation && user?.id && viewOnly) {
+      fetchAnalytics()
+    }
+  }, [evaluation, user?.id, viewOnly])
+
+  const fetchAnalytics = async () => {
+    if (!user?.id) return
+
+    try {
+      setLoadingAnalytics(true)
+      const [insightsData, trendsData] = await Promise.all([
+        apiClient.getStudentInsights(user.id).catch(() => null),
+        apiClient.getPerformanceTrends(user.id).catch(() => null),
+      ])
+      setInsights(insightsData)
+      setTrends(trendsData)
+    } catch (error) {
+      console.error('Failed to fetch analytics:', error)
+      // Don't show error - analytics are optional
+    } finally {
+      setLoadingAnalytics(false)
+    }
+  }
 
   const fetchEvaluation = async () => {
     try {
@@ -301,6 +333,101 @@ export default function OSCEFeedback({ sessionId, onClose, viewOnly = false }: O
               </div>
             </div>
           </div>
+
+          {/* Analytics Insights - Mem0 Analytics */}
+          {viewOnly && insights && (
+            <div className="border-2 border-indigo-200 rounded-lg p-6 bg-gradient-to-br from-indigo-50 to-purple-50">
+              <div className="flex items-center gap-2 mb-4">
+                <BarChart3 className="h-6 w-6 text-indigo-600" />
+                <h3 className="text-xl font-bold text-indigo-900">Learning Insights</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Strengths */}
+                {insights.strengths && insights.strengths.length > 0 && (
+                  <div className="bg-white rounded-lg p-4 border border-green-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      <h4 className="font-semibold text-green-900">Your Consistent Strengths</h4>
+                    </div>
+                    <ul className="space-y-1">
+                      {insights.strengths.slice(0, 3).map((strength: string, idx: number) => (
+                        <li key={idx} className="text-sm text-green-800">• {strength}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Areas for Improvement */}
+                {insights.improvement_areas && insights.improvement_areas.length > 0 && (
+                  <div className="bg-white rounded-lg p-4 border border-amber-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Target className="h-5 w-5 text-amber-600" />
+                      <h4 className="font-semibold text-amber-900">Focus Areas</h4>
+                    </div>
+                    <ul className="space-y-1">
+                      {insights.improvement_areas.slice(0, 3).map((area: string, idx: number) => (
+                        <li key={idx} className="text-sm text-amber-800">• {area}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Best Scenarios */}
+                {insights.best_scenarios && insights.best_scenarios.length > 0 && (
+                  <div className="bg-white rounded-lg p-4 border border-blue-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Award className="h-5 w-5 text-blue-600" />
+                      <h4 className="font-semibold text-blue-900">Your Best Performing Scenarios</h4>
+                    </div>
+                    <ul className="space-y-2">
+                      {insights.best_scenarios.slice(0, 3).map((scenario: any, idx: number) => (
+                        <li key={idx} className="text-sm text-blue-800">
+                          • {scenario.scenario}: {scenario.average_score}% avg ({scenario.sessions} sessions)
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Recommendations */}
+                {insights.recommendations && insights.recommendations.length > 0 && (
+                  <div className="bg-white rounded-lg p-4 border border-purple-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Lightbulb className="h-5 w-5 text-purple-600" />
+                      <h4 className="font-semibold text-purple-900">Personalized Recommendations</h4>
+                    </div>
+                    <ul className="space-y-2">
+                      {insights.recommendations.slice(0, 3).map((rec: string, idx: number) => (
+                        <li key={idx} className="text-sm text-purple-800">• {rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Performance Trends */}
+              {trends && trends.improvement_rate !== 0 && (
+                <div className="mt-4 bg-white rounded-lg p-4 border border-indigo-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold text-indigo-900">Performance Trend</h4>
+                      <p className="text-sm text-indigo-700">
+                        {trends.improvement_rate > 0 ? '📈' : '📉'} {Math.abs(trends.improvement_rate)}% 
+                        {trends.improvement_rate > 0 ? ' improvement' : ' change'} over time
+                      </p>
+                    </div>
+                    {trends.consistency > 0 && (
+                      <div className="text-right">
+                        <p className="text-sm text-indigo-700">Consistency</p>
+                        <p className="text-2xl font-bold text-indigo-600">{trends.consistency}%</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Empathy Analysis - Only show if available */}
           {evaluation.empathy_analysis && (

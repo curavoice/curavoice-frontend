@@ -7,7 +7,7 @@ import DashboardNav from '@/components/DashboardNav'
 import EchoIcon from '@/components/icons/Echo'
 import EchoLoader from '@/components/EchoLoader'
 import Image from 'next/image'
-import { TrendingUp, TrendingDown, Minus, ChevronRight, X } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, ChevronRight } from 'lucide-react'
 import { formatScenarioTitle } from '@/lib/utils'
 
 export default function DashboardPage() {
@@ -25,13 +25,13 @@ export default function DashboardPage() {
     score?: number;
     feedback_summary?: string;
     message?: string;
+    session_id?: string;
   } | null>(null)
   const [streak, setStreak] = useState<{
     current_streak: number;
     longest_streak: number;
     message?: string;
   } | null>(null)
-  const [showComingSoon, setShowComingSoon] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
   // Redirect to login if not authenticated
@@ -304,7 +304,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="feedback-actions">
                   <button 
-                    onClick={() => setShowComingSoon(true)}
+                    onClick={() => router.push('/reports')}
                     className="feedback-action-button"
                   >
                     View Full Report
@@ -360,36 +360,6 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-
-      {/* Coming Soon Modal */}
-      {showComingSoon && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComingSoon(false)}>
-          <div className="bg-white rounded-2xl max-w-md w-full p-8 relative" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => setShowComingSoon(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
-              aria-label="Close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="flex flex-col items-center text-center">
-              <div className="mb-6">
-                <EchoIcon width={200} height={230} className="mx-auto" />
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Coming Soon</h2>
-              <p className="text-gray-600 mb-6">
-                Full report feature is under development. Stay tuned for updates!
-              </p>
-              <button
-                onClick={() => setShowComingSoon(false)}
-                className="px-6 py-2 bg-[#344895] text-white rounded-lg hover:bg-[#1A1F71] transition-colors"
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   )

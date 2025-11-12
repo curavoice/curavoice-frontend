@@ -54,6 +54,12 @@ export default function DashboardNav() {
           >
             Statistics
           </Link>
+          <Link 
+            href="/reports" 
+            className={`dashboard-nav-link ${pathname === '/reports' ? 'dashboard-nav-link-active' : ''}`}
+          >
+            Reports
+          </Link>
         </div>
 
         {/* Mobile Navigation Menu */}
@@ -70,6 +76,13 @@ export default function DashboardNav() {
             className={`dashboard-mobile-nav-link ${isStatistics ? 'text-[#3DD6D0]' : ''}`}
           >
             Stats
+          </Link>
+          <span className="text-gray-400">|</span>
+          <Link 
+            href="/reports" 
+            className={`dashboard-mobile-nav-link ${pathname === '/reports' ? 'text-[#3DD6D0]' : ''}`}
+          >
+            Reports
           </Link>
         </div>
 

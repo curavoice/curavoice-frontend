@@ -302,6 +302,59 @@ class ApiClient {
 
     return response.json()
   }
+
+  async getStudentInsights(userId: string): Promise<any> {
+    const response = await fetch(`${this.getApiBase()}/statistics/analytics/insights`, {
+      method: 'GET',
+      headers: {
+        ...this.getAuthHeaders(),
+        'X-User-ID': userId,
+      },
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to fetch insights')
+    }
+
+    return response.json()
+  }
+
+  async getPerformanceTrends(userId: string, scenarioType?: string): Promise<any> {
+    const url = new URL(`${this.getApiBase()}/statistics/analytics/trends`)
+    if (scenarioType) {
+      url.searchParams.set('scenario_type', scenarioType)
+    }
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        ...this.getAuthHeaders(),
+        'X-User-ID': userId,
+      },
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to fetch trends')
+    }
+
+    return response.json()
+  }
+
+  async exportAllReports(format: 'pdf' | 'csv' = 'pdf'): Promise<Blob> {
+    const response = await fetch(`${this.getApiBase()}/training/sessions/export?format=${format}`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to export reports')
+    }
+
+    return response.blob()
+  }
 }
 
 export const apiClient = new ApiClient(API_URL)
