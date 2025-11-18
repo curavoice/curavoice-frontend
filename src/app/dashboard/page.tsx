@@ -8,7 +8,6 @@ import EchoIcon from '@/components/icons/Echo'
 import EchoLoader from '@/components/EchoLoader'
 import Image from 'next/image'
 import { TrendingUp, TrendingDown, Minus, ChevronRight, X } from 'lucide-react'
-import { formatScenarioTitle } from '@/lib/utils'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -146,6 +145,40 @@ export default function DashboardPage() {
     if (trend === 'up') return 'text-green-500'
     if (trend === 'down') return 'text-red-500'
     return 'text-gray-500'
+  }
+
+  const cleanFeedbackSummary = (summary: string | undefined): string => {
+    if (!summary) return 'Great session! Keep practicing to improve your skills.'
+    
+    // Remove score-related patterns like "You scored 68/100 (68.0%) - FAIL."
+    // This regex matches patterns like:
+    // - "You scored X/Y (Z%) - RESULT."
+    // - "Scored X/Y (Z%) - RESULT."
+    // - "X/Y (Z%) - RESULT."
+    let cleaned = summary.replace(
+      /(?:You\s+)?(?:scored|Scored)\s+\d+\/\d+\s*\([^)]+%\)\s*-?\s*(?:PASS|FAIL|pass|fail|Pass|Fail)?\.?\s*/gi,
+      ''
+    ).trim()
+    
+    // Also remove patterns that start with just scores
+    cleaned = cleaned.replace(
+      /^\d+\/\d+\s*\([^)]+%\)\s*-?\s*(?:PASS|FAIL|pass|fail|Pass|Fail)?\.?\s*/gi,
+      ''
+    ).trim()
+    
+    // Remove standalone "FAIL" or "PASS" at the beginning
+    cleaned = cleaned.replace(/^(FAIL|PASS|fail|pass|Pass|Fail)\s*[-.]\s*/gi, '').trim()
+    
+    // If cleaning resulted in empty string, return default
+    if (!cleaned || cleaned.length === 0) {
+      return 'Great session! Keep practicing to improve your skills.'
+    }
+    
+    // Remove leading/trailing periods and clean up spacing
+    cleaned = cleaned.replace(/^\.+/, '').replace(/\.+$/, '').trim()
+    cleaned = cleaned.replace(/\s+/g, ' ')
+    
+    return cleaned
   }
 
   return (
@@ -295,11 +328,8 @@ export default function DashboardPage() {
             {recentFeedback?.has_feedback ? (
               <>
                 <div className="mb-3">
-                  <p className="text-sm text-gray-600 mb-1">
-                    <strong>{formatScenarioTitle(recentFeedback.scenario_title)}</strong> - Score: {recentFeedback.score}%
-                  </p>
                   <p className="feedback-text">
-                    {recentFeedback.feedback_summary || 'Great session! Keep practicing to improve your skills.'}
+                    {cleanFeedbackSummary(recentFeedback.feedback_summary)}
                   </p>
                 </div>
                 <div className="feedback-actions">
