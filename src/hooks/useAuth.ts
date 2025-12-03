@@ -29,11 +29,24 @@ export function useAuth(): UseAuthReturn {
         .then((currentUser) => {
           setUser(currentUser)
         })
-        .catch(() => {
-          // Token invalid, clear and redirect
-          apiClient.clearTokens()
-          setUser(null)
-          router.push('/auth/login')
+        .catch((error) => {
+          // Only clear tokens and redirect for actual authentication errors (401)
+          // Don't sign out for network errors, server errors, etc.
+          const isAuthError = error?.message?.toLowerCase().includes('unauthorized') ||
+                              error?.message?.toLowerCase().includes('invalid token') ||
+                              error?.message?.toLowerCase().includes('token expired') ||
+                              error?.status === 401
+          
+          if (isAuthError) {
+            console.log('[useAuth] Token invalid, clearing and redirecting to login')
+            apiClient.clearTokens()
+            setUser(null)
+            router.push('/auth/login')
+          } else {
+            // For other errors (network, server issues), keep the user logged in
+            // They can retry or the issue may resolve
+            console.warn('[useAuth] Error verifying user, but keeping session:', error?.message || error)
+          }
         })
     } else {
       setLoading(false)

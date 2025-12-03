@@ -40,9 +40,10 @@ export default function EchoLoader({ message, context = 'general', imageSrc }: E
   // State for cycling reload images
   const [reloadImageIndex, setReloadImageIndex] = useState(0)
   const [imageKey, setImageKey] = useState(0) // Force re-render key
+  const [imageFailed, setImageFailed] = useState(false)
   
   // Reload images array - defined outside to avoid recreation
-  const reloadImages = ['/assets/echo-reload-1.jpeg', '/assets/echo-reload-2.jpeg']
+  const reloadImages = ['/assets/echo-reload-1.png', '/assets/echo-reload-2.png']
   
   // Cycle reload images every 2 seconds when reloading
   useEffect(() => {
@@ -73,7 +74,11 @@ export default function EchoLoader({ message, context = 'general', imageSrc }: E
   }, [isReloading, imageSrc, reloadImages])
   
   // Determine which image to use - recalculated on every render to pick up reloadImageIndex changes
-  const iconImageSrc = imageSrc || (isReloading ? reloadImages[reloadImageIndex] : (isEvaluating ? '/assets/echo-evaluator.jpeg' : undefined))
+  const baseImageSrc = isReloading
+    ? reloadImages[reloadImageIndex]
+    : (isEvaluating ? '/assets/echo-evaluator.png' : '/assets/echo-loader.png')
+
+  const iconImageSrc = imageFailed ? undefined : (imageSrc || baseImageSrc)
 
   useEffect(() => {
     // Set random message on client side only (prevents hydration mismatch)
@@ -90,6 +95,10 @@ export default function EchoLoader({ message, context = 'general', imageSrc }: E
     }
   }, [message, context])
 
+  useEffect(() => {
+    setImageFailed(false)
+  }, [imageSrc, baseImageSrc])
+
   return (
     <div className="echo-loader-container">
       <div className="echo-loader-content">
@@ -104,6 +113,7 @@ export default function EchoLoader({ message, context = 'general', imageSrc }: E
               className="echo-loader-icon"
               priority
               unoptimized // Disable Next.js image optimization to ensure immediate updates
+              onError={() => setImageFailed(true)}
             />
           ) : (
             <EchoIcon 
@@ -130,4 +140,3 @@ export default function EchoLoader({ message, context = 'general', imageSrc }: E
     </div>
   )
 }
-

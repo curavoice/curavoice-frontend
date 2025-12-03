@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { X, CheckCircle2, AlertCircle, TrendingUp, Award, Heart, MessageCircle } from 'lucide-react'
 import EchoLoader from '@/components/EchoLoader'
 import ProductFeedback from '@/components/ProductFeedback'
+import { useToast } from '@/hooks/use-toast'
 
 interface OSCEEvaluation {
   overall_score: number
@@ -61,6 +62,7 @@ export default function OSCEFeedback({ sessionId, onClose, viewOnly = false }: O
   const [error, setError] = useState<string | null>(null)
   const [showProductFeedback, setShowProductFeedback] = useState(false)
   const [shouldShowFeedback, setShouldShowFeedback] = useState(false)
+  const { toast } = useToast()
 
   // Determine if we should show product feedback (30% chance, but not in view-only mode)
   useEffect(() => {
@@ -75,25 +77,37 @@ export default function OSCEFeedback({ sessionId, onClose, viewOnly = false }: O
   }, [sessionId, viewOnly])
 
   const fetchEvaluation = async () => {
+    let ApiErrorClass: any = null
     try {
       setLoading(true)
       setError(null)
 
-      const { apiClient } = await import('@/lib/api')
+      const apiModule = await import('@/lib/api')
+      ApiErrorClass = apiModule.ApiError
       
       // If viewOnly, fetch saved evaluation; otherwise, trigger new evaluation
       const data = viewOnly 
-        ? await apiClient.getSessionEvaluation(sessionId)
-        : await apiClient.evaluateTrainingSession(sessionId)
+        ? await apiModule.apiClient.getSessionEvaluation(sessionId)
+        : await apiModule.apiClient.evaluateTrainingSession(sessionId)
       
       setEvaluation(data)
     } catch (err) {
       console.error('Error fetching evaluation:', err)
       const errorMessage = err instanceof Error ? err.message : 'Failed to load evaluation'
+      const isApiError = ApiErrorClass && err instanceof ApiErrorClass
+      const statusCode = isApiError ? (err as { status?: number }).status : undefined
       
       // Check if it's a "conversation too short" error
       if (errorMessage.includes('too short') || errorMessage.includes('Minimum 30 seconds')) {
         setError('Conversation too short for evaluation. Please complete at least 30 seconds of conversation to receive feedback.')
+      } else if (statusCode === 503 || errorMessage.toLowerCase().includes('temporarily unavailable')) {
+        const friendlyMessage = 'Feedback temporarily unavailable. Please try again in a few minutes.'
+        setError(friendlyMessage)
+        toast({
+          variant: 'destructive',
+          title: 'Feedback unavailable',
+          description: 'Evaluation service is offline right now. Your session is saved—try again shortly.',
+        })
       } else {
         setError(errorMessage)
       }
@@ -120,17 +134,18 @@ export default function OSCEFeedback({ sessionId, onClose, viewOnly = false }: O
 
   if (error || !evaluation) {
     const isShortConversation = error?.includes('too short') || error?.includes('30 seconds')
+    const isUnavailable = error?.toLowerCase().includes('unavailable')
     
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-lg p-8 max-w-md w-full">
           <div className="flex flex-col items-center">
-            <div className={`h-16 w-16 rounded-full flex items-center justify-center mb-4 ${isShortConversation ? 'bg-yellow-100' : 'bg-red-100'}`}>
-              <AlertCircle className={`h-10 w-10 ${isShortConversation ? 'text-yellow-600' : 'text-red-500'}`} />
+            <div className={`h-16 w-16 rounded-full flex items-center justify-center mb-4 ${isShortConversation ? 'bg-yellow-100' : isUnavailable ? 'bg-blue-100' : 'bg-red-100'}`}>
+              <AlertCircle className={`h-10 w-10 ${isShortConversation ? 'text-yellow-600' : isUnavailable ? 'text-blue-600' : 'text-red-500'}`} />
             </div>
             
             <h3 className="text-xl font-semibold mb-2 text-gray-900">
-              {isShortConversation ? 'Consultation Incomplete' : 'Evaluation Failed'}
+              {isShortConversation ? 'Consultation Incomplete' : isUnavailable ? 'Feedback Unavailable' : 'Evaluation Failed'}
             </h3>
             
             <p className="text-gray-600 text-center mb-6">
@@ -145,6 +160,14 @@ export default function OSCEFeedback({ sessionId, onClose, viewOnly = false }: O
                   <li>Engage with the patient meaningfully</li>
                   <li>Complete the consultation before requesting feedback</li>
                 </ul>
+              </div>
+            )}
+            
+            {isUnavailable && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 w-full">
+                <p className="text-sm text-blue-800 font-medium">
+                  We could not evaluate this session because evaluation credentials are unavailable. Your conversation is still saved—please try again shortly.
+                </p>
               </div>
             )}
             
@@ -394,5 +417,3 @@ export default function OSCEFeedback({ sessionId, onClose, viewOnly = false }: O
     </div>
   )
 }
-
-

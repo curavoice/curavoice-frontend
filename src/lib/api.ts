@@ -14,6 +14,19 @@ const getApiUrl = (): string => {
 
 const API_URL = getApiUrl()
 
+export class ApiError extends Error {
+  status?: number
+  code?: string
+
+  constructor(message: string, status?: number, code?: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+    Object.setPrototypeOf(this, ApiError.prototype)
+  }
+}
+
 export interface AuthResponse {
   user: {
     id: string
@@ -235,7 +248,14 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      throw new Error('Failed to get user')
+      // Include status code in error for proper handling
+      const error = new Error(
+        response.status === 401 
+          ? 'Unauthorized - token expired or invalid' 
+          : `Failed to get user (${response.status})`
+      ) as Error & { status?: number }
+      error.status = response.status
+      throw error
     }
 
     const user = await response.json()
@@ -256,20 +276,30 @@ class ApiClient {
 
       if (!response.ok) {
         let errorDetail = 'Evaluation failed'
+        let errorCode: string | undefined
         try {
           const error = await response.json()
           errorDetail = error.detail || error.message || errorDetail
+          errorCode = error.code
         } catch {
           errorDetail = `HTTP ${response.status}: ${response.statusText}`
         }
-        throw new Error(errorDetail)
+
+        const friendlyMessage = response.status === 503
+          ? 'Feedback temporarily unavailable. Please try again later.'
+          : errorDetail
+
+        throw new ApiError(friendlyMessage, response.status, errorCode)
       }
 
       return await response.json()
     } catch (error) {
       // Re-throw with more context if it's a network error
+      if (error instanceof ApiError) {
+        throw error
+      }
       if (error instanceof TypeError && error.message.includes('fetch')) {
-        throw new Error('Failed to fetch evaluation. Please check your connection and try again.')
+        throw new ApiError('Failed to fetch evaluation. Please check your connection and try again.')
       }
       throw error
     }
@@ -297,7 +327,7 @@ class ApiClient {
 
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.detail || 'Failed to fetch evaluation')
+      throw new ApiError(error.detail || 'Failed to fetch evaluation', response.status, error.code)
     }
 
     return response.json()
@@ -305,4 +335,3 @@ class ApiClient {
 }
 
 export const apiClient = new ApiClient(API_URL)
-

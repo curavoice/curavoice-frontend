@@ -32,6 +32,13 @@ export interface CreateSessionRequest {
   mode?: string; // "clinical" or "nonclinical"
   medical_category?: string; // "cardiovascular", "otc", "random", etc.
   custom_scenario?: string; // Custom scenario description
+  forced_random?: boolean;
+}
+
+export interface TrainingFeatures {
+  enabled_categories: Record<string, boolean>;
+  evaluation_available: boolean;
+  message: string;
 }
 
 /**
@@ -182,7 +189,8 @@ export function connectToTrainingConversation(
   sessionId: string,
   onMessage: (data: any) => void,
   onAudio: (audioBlob: Blob) => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
+  onClose?: (event: CloseEvent) => void
 ): WebSocket {
   const wsBase = API_V1_BASE.replace('http://', 'ws://').replace('https://', 'wss://');
   
@@ -244,24 +252,31 @@ export function connectToTrainingConversation(
     // 1008 = Policy Violation
     // Others = Unexpected
     
-    const isExpectedClose = event.code === 1000 || event.code === 1001;
+    // 1000 = Normal Closure
+    // 1001 = Going Away (page navigation)
+    // 1005 = No Status Received (normal close without status - NOT an error)
+    // 1006 = Abnormal Closure (network issue)
+    // 1011 = Internal Server Error
+    const isExpectedClose = event.code === 1000 || event.code === 1001 || event.code === 1005;
     const isNetworkIssue = event.code === 1006;
     const isServerError = event.code === 1011;
     
     if (isExpectedClose) {
-      console.log('[TrainingAPI] WebSocket closed normally');
+      console.log('[TrainingAPI] WebSocket closed normally (code:', event.code, ')');
+      // Don't call onError for expected closes
     } else if (isNetworkIssue) {
       console.warn('[TrainingAPI] WebSocket connection lost (network issue)');
-      // Don't call onError for network issues - user might reconnect
+      // Network issues are common, don't show scary error - just log
     } else if (isServerError) {
       console.error('[TrainingAPI] WebSocket closed due to server error:', event.reason);
       onError(new Error(`Server error: ${event.reason || 'Internal server error'}`));
     } else {
       console.warn('[TrainingAPI] WebSocket closed unexpectedly:', event.code, event.reason);
-      // Only show error for truly unexpected closures
-      if (event.code !== 1006) {
-        onError(new Error(`WebSocket closed: ${event.reason || `Code ${event.code}`}`));
-      }
+      // Only show error for truly unexpected closures (not 1005, 1006)
+    }
+
+    if (onClose) {
+      onClose(event);
     }
   };
 
@@ -289,3 +304,10 @@ export function sendTextToTraining(ws: WebSocket, text: string) {
   }
 }
 
+export async function getTrainingFeatures(): Promise<TrainingFeatures> {
+  const response = await fetch(`${API_V1_BASE}/training/features`);
+  if (!response.ok) {
+    throw new Error('Failed to load training features');
+  }
+  return response.json();
+}
