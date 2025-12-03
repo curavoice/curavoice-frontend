@@ -2,10 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { Mic, MicOff, RotateCcw, AlertCircle, Award } from 'lucide-react'
+import { Mic, MicOff, Square, AlertCircle, Award, HelpCircle } from 'lucide-react'
 import { useTrainingSession } from '@/hooks/useTrainingSession'
 import OSCEFeedback from './OSCEFeedback'
+import MicrophoneTutorial from './MicrophoneTutorial'
+import MicrophoneHelp from './MicrophoneHelp'
 import { formatScenarioTitle } from '@/lib/utils'
+import { getTrainingFeatures } from '@/lib/trainingApi'
 
 interface Scenario {
   id: string
@@ -38,12 +41,15 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
   const [completedSessionId, setCompletedSessionId] = useState<string | null>(null)
   const [isEndingSession, setIsEndingSession] = useState(false)
   const [showEndSessionConfirm, setShowEndSessionConfirm] = useState(false)
+  const [showTutorial, setShowTutorial] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   
   // New state for mode, category, and custom scenario
   const [mode, setMode] = useState<'clinical' | 'nonclinical'>('clinical')
   const [medicalCategory, setMedicalCategory] = useState<string>('random')
   const [customScenario, setCustomScenario] = useState<string>('')
   const [useCustomScenario, setUseCustomScenario] = useState(false)
+  const [evaluationAvailable, setEvaluationAvailable] = useState(true)
 
   // Timer effect
   useEffect(() => {
@@ -56,6 +62,24 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
     }
     return () => clearInterval(interval)
   }, [session, isConnected])
+
+  useEffect(() => {
+    let isMounted = true
+    const fetchFeatures = async () => {
+      try {
+        const data = await getTrainingFeatures()
+        if (isMounted) {
+          setEvaluationAvailable(data.evaluation_available !== false)
+        }
+      } catch (err) {
+        console.warn('[TrainingBot] Failed to load training feature flags', err)
+      }
+    }
+    fetchFeatures()
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   // Helper function to format category name
   const formatCategoryName = (category: string): string => {
@@ -175,14 +199,24 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
     }
   }
 
-  const getStatusMessage = () => {
-    if (error) return `Error: ${error}`;
-    if (!session) return 'Select a scenario to begin';
-    if (!isConnected) return 'Connecting...';
-    if (isSpeaking) return 'Echo is speaking...';
-    if (isRecording) return 'Listening to you...';
-    return 'Tap the mic to speak';
+  // Check if user has seen tutorial before
+  useEffect(() => {
+    if (session && isConnected) {
+      const hasSeenTutorial = localStorage.getItem('curavoice_tutorial_seen')
+      if (!hasSeenTutorial) {
+        // Small delay to let UI settle
+        setTimeout(() => {
+          setShowTutorial(true)
+        }, 500)
+      }
+    }
+  }, [session, isConnected])
+
+  const handleTutorialClose = () => {
+    setShowTutorial(false)
+    localStorage.setItem('curavoice_tutorial_seen', 'true')
   }
+
 
   const getConversationState = () => {
     if (isSpeaking) return 'bot-speaking';
@@ -396,79 +430,141 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
                 )}
               </div>
 
-              {/* Status Message */}
-              <div className="voice-bot-status-message">
-                <p className="voice-bot-status-text">{getStatusMessage()}</p>
-              </div>
-
               {/* Controls */}
-              <div className="voice-bot-controls">
+              <div className="voice-bot-controls relative">
+                {/* Help Button - Top Right */}
+                {session && isConnected && (
+                  <button
+                    onClick={() => setShowHelp(true)}
+                    className="absolute top-0 right-0 p-2 text-gray-400 hover:text-indigo-600 transition-colors rounded-full hover:bg-indigo-50 z-10"
+                    aria-label="Show microphone help"
+                    title="How to use the microphone"
+                  >
+                    <HelpCircle className="w-5 h-5" />
+                  </button>
+                )}
+
                 {/* Microphone Button (Main Control) */}
-                <button
-                  onClick={handleToggleMicrophone}
-                  className={`voice-bot-mic-main ${isRecording ? 'active' : ''}`}
-                  disabled={!isConnected || isSpeaking}
-                  aria-label={isRecording ? 'Stop speaking' : 'Start speaking'}
-                >
-                  <div className="voice-bot-mic-inner">
-                    {isRecording ? (
-                      <MicOff className="voice-bot-mic-icon" />
-                    ) : (
-                      <Mic className="voice-bot-mic-icon" />
+                <div className="flex flex-col items-center gap-4">
+                  <button
+                    onClick={handleToggleMicrophone}
+                    className={`voice-bot-mic-main ${isRecording ? 'active' : ''} ${isSpeaking ? 'opacity-50' : ''}`}
+                    disabled={!isConnected || isSpeaking}
+                    aria-label={isRecording ? 'Stop speaking and send' : 'Start speaking'}
+                  >
+                    <div className="voice-bot-mic-inner">
+                      {isRecording ? (
+                        <MicOff className="voice-bot-mic-icon" />
+                      ) : (
+                        <Mic className="voice-bot-mic-icon" />
+                      )}
+                    </div>
+                    {isRecording && (
+                      <div className="voice-bot-mic-pulse"></div>
+                    )}
+                  </button>
+                  
+                  {/* Clean Status Display */}
+                  <div className="flex flex-col items-center gap-2">
+                    {/* Single Status Badge */}
+                    <span
+                      className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+                        isRecording
+                          ? 'bg-green-50 text-green-700 border border-green-200'
+                          : isSpeaking
+                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          : 'bg-gray-50 text-gray-600 border border-gray-200'
+                      }`}
+                    >
+                      {isRecording ? 'Listening...' : isSpeaking ? 'Echo is replying...' : 'Ready to speak'}
+                    </span>
+                    
+                    {/* Subtle Hint - Only show when idle */}
+                    {!isRecording && !isSpeaking && isConnected && (
+                      <p className="text-xs text-gray-500 text-center max-w-[200px]">
+                        Tap to start, tap again to send
+                      </p>
                     )}
                   </div>
-                  {isRecording && (
-                    <div className="voice-bot-mic-pulse"></div>
-                  )}
-                </button>
+                </div>
 
-                {/* Secondary Controls */}
-                <div className="voice-bot-secondary-controls">
-                  <button
-                    onClick={handleResetSession}
-                    className="voice-bot-control-button voice-bot-reset-button"
-                    aria-label="Reset session"
-                  >
-                    <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </button>
-                  {(completedSessionId || session) && timer >= 35 && (
+                {/* Action Buttons - Clear separation between End Session and Get Feedback */}
+                <div className="flex flex-col items-center gap-3 mt-4">
+                  {/* Get Feedback Button - Primary action when available */}
+                  {(completedSessionId || session) && timer >= 35 && evaluationAvailable && (
                     <button
                       onClick={handleViewFeedback}
                       disabled={isEndingSession}
-                      className={`voice-bot-control-button bg-indigo-600 hover:bg-indigo-700 text-white ${isEndingSession ? 'opacity-50 cursor-wait' : ''}`}
-                      aria-label="View feedback"
-                      title={isEndingSession ? "Ending session..." : "Get performance feedback"}
+                      className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold shadow-lg hover:from-indigo-700 hover:to-purple-700 hover:shadow-xl transition-all duration-200 ${isEndingSession ? 'opacity-50 cursor-wait' : ''}`}
+                      aria-label="Get performance feedback"
+                      title="End session and get your performance evaluation"
                     >
                       {isEndingSession ? (
-                        <div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 border-b-2 border-white"></div>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                       ) : (
-                        <Award className="w-5 h-5 sm:w-6 sm:h-6" />
+                        <Award className="w-5 h-5" />
                       )}
+                      <span>{isEndingSession ? 'Evaluating...' : 'Get Feedback'}</span>
                     </button>
                   )}
+                  
+                  {/* Feedback not ready yet indicator */}
                   {(completedSessionId || session) && timer < 35 && (
-                    <button
-                      disabled
-                      className="voice-bot-control-button bg-gray-400 cursor-not-allowed opacity-50"
-                      aria-label="View feedback"
-                      title={`Minimum 30 seconds of conversation required (${timer}s elapsed)`}
-                    >
-                      <Award className="w-5 h-5 sm:w-6 sm:h-6" />
-                    </button>
+                    <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-100 text-gray-500 text-sm">
+                      <Award className="w-4 h-4" />
+                      <span>Feedback available after 30s ({timer}s)</span>
+                    </div>
+                  )}
+
+                  {/* End Session Button - Always visible, clearly styled as destructive action */}
+                  <button
+                    onClick={handleResetSession}
+                    className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-white border-2 border-red-300 text-red-600 font-medium hover:bg-red-50 hover:border-red-400 hover:text-red-700 transition-all duration-200"
+                    aria-label="End session without feedback"
+                    title="End this training session"
+                  >
+                    <Square className="w-4 h-4 fill-current" />
+                    <span>End Session</span>
+                  </button>
+
+                  {/* Evaluation unavailable notice */}
+                  {!evaluationAvailable && (
+                    <p className="text-xs text-amber-600 text-center max-w-[250px]">
+                      ⚠️ Feedback temporarily unavailable. Your sessions are still saved.
+                    </p>
                   )}
                 </div>
               </div>
 
-              {/* Helpful Tips */}
-              <div className="voice-bot-tips">
-                <p className="voice-bot-tip-text">
-                  💡 <strong>Tip:</strong> Speak clearly and naturally. Echo will respond based on your tone and empathy.
-                </p>
-              </div>
+              {/* Helpful Tips - Cleaner */}
+              {session && isConnected && (
+                <div className="voice-bot-tips">
+                  <button
+                    onClick={() => setShowTutorial(true)}
+                    className="text-xs text-indigo-600 hover:text-indigo-700 underline transition-colors"
+                  >
+                    Need help? View microphone guide
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
+
+      {/* Microphone Tutorial */}
+      {showTutorial && (
+        <MicrophoneTutorial
+          onClose={handleTutorialClose}
+        />
+      )}
+
+      {/* Microphone Help */}
+      {showHelp && (
+        <MicrophoneHelp
+          onClose={() => setShowHelp(false)}
+        />
+      )}
 
       {/* End Session Confirmation Dialog */}
       {showEndSessionConfirm && (
@@ -527,4 +623,3 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
     </div>
   )
 }
-
