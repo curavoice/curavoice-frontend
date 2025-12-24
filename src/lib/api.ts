@@ -4,11 +4,11 @@ const getApiUrl = (): string => {
   const url = process.env.NEXT_PUBLIC_API_URL || 'https://curavoice-backend-production-3ea1.up.railway.app'
   // Remove trailing slash
   const cleanUrl = url.replace(/\/$/, '')
-  
+
   // Debug logging
   console.log('[API] NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
   console.log('[API] Resolved API URL:', cleanUrl);
-  
+
   return cleanUrl
 }
 
@@ -55,10 +55,10 @@ class ApiClient {
   private getApiBase(): string {
     // Remove /api/v1 if it exists at the end to avoid duplication
     let cleanBase = this.baseUrl.replace(/\/api\/v1\/?$/, '')
-    
+
     // Ensure no trailing slash
     cleanBase = cleanBase.replace(/\/$/, '')
-    
+
     // Always append /api/v1 to ensure consistent API path
     return `${cleanBase}/api/v1`
   }
@@ -121,17 +121,17 @@ class ApiClient {
   async login(data: LoginRequest): Promise<AuthResponse> {
     const loginUrl = `${this.getApiBase()}/auth/login`;
     const timestamp = new Date().toISOString();
-    
+
     console.log(`[${timestamp}] [API] 🔐 Login attempt started`);
     console.log(`[${timestamp}] [API] Login URL:`, loginUrl);
     console.log(`[${timestamp}] [API] Base URL:`, this.baseUrl);
     console.log(`[${timestamp}] [API] API Base:`, this.getApiBase());
     console.log(`[${timestamp}] [API] Email:`, data.email);
-    
+
     try {
       const response = await fetch(loginUrl, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
@@ -158,11 +158,11 @@ class ApiClient {
       console.log(`[${timestamp}] [API] ✅ Login successful for user:`, result.user.email);
       console.log(`[${timestamp}] [API] User ID:`, result.user.id);
       console.log(`[${timestamp}] [API] User role:`, result.user.role);
-      
+
       this.setToken(result.access_token)
       this.setRefreshToken(result.refresh_token)
       this.setUser(result.user)
-      
+
       console.log(`[${timestamp}] [API] ✅ Tokens and user data saved to localStorage`);
       return result
     } catch (error) {
@@ -178,16 +178,16 @@ class ApiClient {
   async register(data: RegisterRequest): Promise<AuthResponse> {
     const registerUrl = `${this.getApiBase()}/auth/register`;
     const timestamp = new Date().toISOString();
-    
+
     console.log(`[${timestamp}] [API] 📝 Registration attempt started`);
     console.log(`[${timestamp}] [API] Register URL:`, registerUrl);
     console.log(`[${timestamp}] [API] Email:`, data.email);
     console.log(`[${timestamp}] [API] Full name:`, data.full_name);
-    
+
     try {
       const response = await fetch(registerUrl, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
@@ -211,11 +211,11 @@ class ApiClient {
 
       const result: AuthResponse = await response.json()
       console.log(`[${timestamp}] [API] ✅ Registration successful for user:`, result.user.email);
-      
+
       this.setToken(result.access_token)
       this.setRefreshToken(result.refresh_token)
       this.setUser(result.user)
-      
+
       console.log(`[${timestamp}] [API] ✅ Tokens and user data saved to localStorage`);
       return result
     } catch (error) {

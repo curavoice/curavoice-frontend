@@ -12,13 +12,24 @@ interface Scenario {
   name: string
   description: string
   icon: string
+  custom_scenario?: string
 }
 
 interface TrainingBotProps {
   scenarios: Scenario[]
+  lectureSimulation?: {
+    title: string
+    patient_context: string
+    patient_background: string
+    opening_line: string
+    key_concerns: string[]
+    medications: string[]
+    expected_actions: string[]
+    lecture_title: string
+  }
 }
 
-export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
+export default function TrainingBotEnhanced({ scenarios, lectureSimulation }: TrainingBotProps) {
   const {
     session,
     isConnected,
@@ -38,7 +49,7 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
   const [completedSessionId, setCompletedSessionId] = useState<string | null>(null)
   const [isEndingSession, setIsEndingSession] = useState(false)
   const [showEndSessionConfirm, setShowEndSessionConfirm] = useState(false)
-  
+
   // New state for mode, category, and custom scenario
   const [mode, setMode] = useState<'clinical' | 'nonclinical'>('clinical')
   const [medicalCategory, setMedicalCategory] = useState<string>('random')
@@ -73,13 +84,42 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
 
   const handleStartSession = async () => {
     console.log('[TrainingBot] Starting session with mode:', mode, 'category:', medicalCategory, 'custom:', customScenario);
-    
+
     // Prepare session request
     const sessionRequest: any = {
       mode: mode,
     };
-    
-    if (useCustomScenario && customScenario.trim()) {
+
+    // Check if this is a lecture-based simulation
+    if (lectureSimulation) {
+      // Build a comprehensive scenario from the lecture content
+      const lectureScenario = `
+LECTURE-BASED PATIENT SIMULATION
+================================
+Lecture: ${lectureSimulation.lecture_title}
+
+Patient Background:
+${lectureSimulation.patient_background}
+
+Patient's Opening Statement:
+"${lectureSimulation.opening_line}"
+
+Key Patient Concerns:
+${lectureSimulation.key_concerns?.map((c: string) => `- ${c}`).join('\n') || 'None specified'}
+
+Relevant Medications:
+${lectureSimulation.medications?.map((m: string) => `- ${m}`).join('\n') || 'None specified'}
+
+Expected Pharmacist Actions:
+${lectureSimulation.expected_actions?.map((a: string) => `- ${a}`).join('\n') || 'None specified'}
+
+INSTRUCTIONS: Role-play as this patient. Stay in character. Express the concerns naturally. Respond realistically to the healthcare provider's questions and counseling.
+`.trim();
+
+      sessionRequest.custom_scenario = lectureScenario;
+      setSelectedScenario(lectureSimulation.title);
+      setSelectedCategory('lecture');
+    } else if (useCustomScenario && customScenario.trim()) {
       sessionRequest.custom_scenario = customScenario.trim();
       setSelectedScenario('Custom Scenario');
       setSelectedCategory(null); // Clear category for custom scenarios
@@ -95,18 +135,18 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
       setSelectedScenario('Random Scenario');
       setSelectedCategory('random');
     }
-    
+
     await startSession(sessionRequest);
   }
 
   const handleToggleMicrophone = () => {
     console.log('[TrainingBot] Toggle microphone, current state:', { isRecording, isConnected });
-    
+
     if (!isConnected) {
       console.warn('[TrainingBot] Cannot toggle mic - not connected');
       return;
     }
-    
+
     if (isRecording) {
       console.log('[TrainingBot] Stopping recording...');
       stopRecording();
@@ -140,27 +180,27 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
 
   const handleConfirmEndSession = async () => {
     setShowEndSessionConfirm(false);
-    
+
     // If session is still active, end it first before showing feedback
     if (session && isConnected) {
       try {
         setIsEndingSession(true);
         console.log('[Feedback] Ending session before showing feedback...');
-        
+
         // Store session ID before stopping
         const sessionIdToEvaluate = session.id;
-        
+
         // End the session (this will close WebSocket and save transcript)
         await stopSession();
-        
+
         // Small delay to ensure WebSocket is fully closed
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         setCompletedSessionId(sessionIdToEvaluate);
         setSelectedScenario(null);
         setTimer(0);
         setIsEndingSession(false);
-        
+
         // Now show feedback
         setShowFeedback(true);
       } catch (err) {
@@ -229,123 +269,149 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
           {!session ? (
             /* Scenario Selection */
             <div className="voice-bot-scenario-selection">
-              <h3 className="voice-bot-scenario-title">Choose Your Training Scenario</h3>
-              <p className="voice-bot-scenario-subtitle">Select a patient interaction to practice</p>
-              
-              {/* Mode Selection */}
-              <div className="mb-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Training Mode</label>
-                  <div className="flex gap-4">
-                    <button
-                      onClick={() => setMode('clinical')}
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                        mode === 'clinical'
-                          ? 'bg-[#344895] text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      Clinical
-                    </button>
-                    <button
-                      onClick={() => setMode('nonclinical')}
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                        mode === 'nonclinical'
-                          ? 'bg-[#344895] text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      Nonclinical
-                    </button>
+              {/* Lecture Mode - Simplified UI */}
+              {lectureSimulation ? (
+                <div className="text-center py-6">
+                  <div className="mb-8">
+                    <div className="w-20 h-20 mx-auto bg-[#344895]/10 rounded-full flex items-center justify-center mb-4">
+                      <span className="text-4xl">📖</span>
+                    </div>
+                    <h3 className="text-xl font-montserrat font-bold text-[#344895] mb-2">
+                      {lectureSimulation.title}
+                    </h3>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {mode === 'clinical' 
-                      ? 'Patient Education, Drug Interactions, Counselling' 
-                      : 'Insurance, Copays, Logistics'}
+
+                  <button
+                    onClick={() => handleStartSession()}
+                    className="px-8 py-4 bg-gradient-to-r from-[#3DD6D0] to-[#2BB5AF] text-[#1A1F71] rounded-full font-montserrat font-bold text-lg hover:shadow-lg transition-all"
+                  >
+                    🎙️ Start Voice Practice
+                  </button>
+
+                  <p className="text-sm text-gray-500 mt-4">
+                    The patient will start the conversation
                   </p>
                 </div>
+              ) : (
+                /* Standard Mode - Full Options */
+                <>
+                  <h3 className="voice-bot-scenario-title">Choose Your Training Scenario</h3>
+                  <p className="voice-bot-scenario-subtitle">Select a patient interaction to practice</p>
 
-                {/* Medical Category (Clinical only) */}
-                {mode === 'clinical' && (
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Medical Category</label>
-                    <select
-                      value={medicalCategory}
-                      onChange={(e) => setMedicalCategory(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#344895]"
-                      disabled={useCustomScenario}
-                    >
-                      <option value="random">Random</option>
-                      <option value="cardiovascular">Cardiovascular</option>
-                      <option value="otc">OTC</option>
-                      <option value="respiratory">Respiratory</option>
-                      <option value="diabetes">Diabetes</option>
-                      <option value="pain_management">Pain Management</option>
-                      <option value="mental_health">Mental Health</option>
-                      <option value="pediatric">Pediatric</option>
-                      <option value="geriatric">Geriatric</option>
-                      <option value="womens_health">Women's Health</option>
-                    </select>
+                  {/* Mode Selection */}
+                  <div className="mb-6 space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Training Mode</label>
+                      <div className="flex gap-4">
+                        <button
+                          onClick={() => setMode('clinical')}
+                          className={`px-4 py-2 rounded-lg font-medium transition-colors ${mode === 'clinical'
+                            ? 'bg-[#344895] text-white'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                        >
+                          Clinical
+                        </button>
+                        <button
+                          onClick={() => setMode('nonclinical')}
+                          className={`px-4 py-2 rounded-lg font-medium transition-colors ${mode === 'nonclinical'
+                            ? 'bg-[#344895] text-white'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                        >
+                          Nonclinical
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {mode === 'clinical'
+                          ? 'Patient Education, Drug Interactions, Counselling'
+                          : 'Insurance, Copays, Logistics'}
+                      </p>
+                    </div>
+
+                    {/* Medical Category (Clinical only) */}
+                    {mode === 'clinical' && (
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Medical Category</label>
+                        <select
+                          value={medicalCategory}
+                          onChange={(e) => setMedicalCategory(e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#344895]"
+                          disabled={useCustomScenario}
+                        >
+                          <option value="random">Random</option>
+                          <option value="cardiovascular">Cardiovascular</option>
+                          <option value="otc">OTC</option>
+                          <option value="respiratory">Respiratory</option>
+                          <option value="diabetes">Diabetes</option>
+                          <option value="pain_management">Pain Management</option>
+                          <option value="mental_health">Mental Health</option>
+                          <option value="pediatric">Pediatric</option>
+                          <option value="geriatric">Geriatric</option>
+                          <option value="womens_health">Women&apos;s Health</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Custom Scenario Option */}
+                    <div>
+                      <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                        <input
+                          type="checkbox"
+                          checked={useCustomScenario}
+                          onChange={(e) => {
+                            setUseCustomScenario(e.target.checked);
+                            if (!e.target.checked) {
+                              setCustomScenario('');
+                            }
+                          }}
+                          className="w-4 h-4"
+                        />
+                        Use Custom Scenario
+                      </label>
+                      {useCustomScenario && (
+                        <textarea
+                          value={customScenario}
+                          onChange={(e) => setCustomScenario(e.target.value)}
+                          placeholder="e.g., a hypertension patient with cough, an old patient on lisinopril"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#344895] min-h-[80px]"
+                        />
+                      )}
+                    </div>
                   </div>
-                )}
 
-                {/* Custom Scenario Option */}
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
-                    <input
-                      type="checkbox"
-                      checked={useCustomScenario}
-                      onChange={(e) => {
-                        setUseCustomScenario(e.target.checked);
-                        if (!e.target.checked) {
-                          setCustomScenario('');
-                        }
-                      }}
-                      className="w-4 h-4"
-                    />
-                    Use Custom Scenario
-                  </label>
-                  {useCustomScenario && (
-                    <textarea
-                      value={customScenario}
-                      onChange={(e) => setCustomScenario(e.target.value)}
-                      placeholder="e.g., a hypertension patient with cough, an old patient on lisinopril"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#344895] min-h-[80px]"
-                    />
-                  )}
-                </div>
-              </div>
-
-              {/* Start Session Button */}
-              <div className="mb-6">
-                <button
-                  onClick={() => handleStartSession()}
-                  disabled={useCustomScenario && !customScenario.trim()}
-                  className="w-full px-6 py-3 bg-[#344895] text-white rounded-lg font-semibold hover:bg-[#1A1F71] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {useCustomScenario 
-                    ? 'Start Custom Scenario' 
-                    : mode === 'clinical'
-                    ? `Start ${medicalCategory === 'random' ? 'Random' : formatScenarioTitle(medicalCategory)} Scenario`
-                    : 'Start Nonclinical Scenario'}
-                </button>
-              </div>
-              
-              {/* Legacy Scenario Cards (Optional - can be hidden) */}
-              {false && (
-                <div className="voice-bot-scenarios-grid">
-                  {scenarios.map((scenarioItem) => (
+                  {/* Start Session Button */}
+                  <div className="mb-6">
                     <button
-                      key={scenarioItem.id}
                       onClick={() => handleStartSession()}
-                      className="voice-bot-scenario-card"
+                      disabled={useCustomScenario && !customScenario.trim()}
+                      className="w-full px-6 py-3 bg-[#344895] text-white rounded-lg font-semibold hover:bg-[#1A1F71] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <div className="voice-bot-scenario-icon">{scenarioItem.icon}</div>
-                      <h4 className="voice-bot-scenario-name">{scenarioItem.name}</h4>
-                      <p className="voice-bot-scenario-desc">{scenarioItem.description}</p>
+                      {useCustomScenario
+                        ? 'Start Custom Scenario'
+                        : mode === 'clinical'
+                          ? `Start ${medicalCategory === 'random' ? 'Random' : formatScenarioTitle(medicalCategory)} Scenario`
+                          : 'Start Nonclinical Scenario'}
                     </button>
-                  ))}
-                </div>
+                  </div>
+
+                  {/* Legacy Scenario Cards (Optional - can be hidden) */}
+                  {false && (
+                    <div className="voice-bot-scenarios-grid">
+                      {scenarios.map((scenarioItem) => (
+                        <button
+                          key={scenarioItem.id}
+                          onClick={() => handleStartSession()}
+                          className="voice-bot-scenario-card"
+                        >
+                          <div className="voice-bot-scenario-icon">{scenarioItem.icon}</div>
+                          <h4 className="voice-bot-scenario-name">{scenarioItem.name}</h4>
+                          <p className="voice-bot-scenario-desc">{scenarioItem.description}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ) : (
@@ -490,7 +556,7 @@ export default function TrainingBotEnhanced({ scenarios }: TrainingBotProps) {
                 </p>
               </div>
             </div>
-            
+
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setShowEndSessionConfirm(false)}

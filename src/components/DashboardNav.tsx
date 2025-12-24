@@ -9,10 +9,11 @@ export default function DashboardNav() {
   const pathname = usePathname()
   const router = useRouter()
   const { user } = useAuth()
-  
+
   const isTraining = pathname === '/training'
-  const isStatistics = pathname === '/dashboard'
+  const isDashboard = pathname === '/dashboard'
   const isProfile = pathname === '/profile'
+  const isLibrary = pathname === '/upload'
 
   const handleProfileClick = () => {
     router.push('/profile')
@@ -32,7 +33,7 @@ export default function DashboardNav() {
     <nav className="dashboard-nav-container">
       <div className="dashboard-nav-content">
         {/* Logo and Brand - Clickable */}
-        <button 
+        <button
           onClick={handleLogoClick}
           className="dashboard-brand dashboard-brand-clickable"
         >
@@ -42,40 +43,53 @@ export default function DashboardNav() {
 
         {/* Navigation Links - Desktop */}
         <div className="dashboard-nav-links">
-          <Link 
-            href="/training" 
+          <Link
+            href="/training"
             className={`dashboard-nav-link ${isTraining ? 'dashboard-nav-link-active' : ''}`}
           >
             Training
           </Link>
-          <Link 
-            href="/dashboard" 
-            className={`dashboard-nav-link ${isStatistics ? 'dashboard-nav-link-active' : ''}`}
+          <Link
+            href="/upload"
+            className={`dashboard-nav-link ${isLibrary ? 'dashboard-nav-link-active' : ''}`}
           >
-            Statistics
+            Library
+          </Link>
+          <Link
+            href="/dashboard"
+            className={`dashboard-nav-link ${isDashboard ? 'dashboard-nav-link-active' : ''}`}
+          >
+            Dashboard
           </Link>
         </div>
 
         {/* Mobile Navigation Menu */}
         <div className="dashboard-mobile-menu">
-          <Link 
-            href="/training" 
+          <Link
+            href="/training"
             className={`dashboard-mobile-nav-link ${isTraining ? 'text-[#3DD6D0]' : ''}`}
           >
             Training
           </Link>
           <span className="text-gray-400">|</span>
-          <Link 
-            href="/dashboard" 
-            className={`dashboard-mobile-nav-link ${isStatistics ? 'text-[#3DD6D0]' : ''}`}
+          <Link
+            href="/upload"
+            className={`dashboard-mobile-nav-link ${isLibrary ? 'text-[#3DD6D0]' : ''}`}
           >
-            Stats
+            Library
+          </Link>
+          <span className="text-gray-400">|</span>
+          <Link
+            href="/dashboard"
+            className={`dashboard-mobile-nav-link ${isDashboard ? 'text-[#3DD6D0]' : ''}`}
+          >
+            Dashboard
           </Link>
         </div>
 
         {/* User Profile Circle with Dropdown */}
         <div className="dashboard-user-section">
-          <button 
+          <button
             onClick={handleProfileClick}
             className={`dashboard-user-circle ${isProfile ? 'dashboard-user-circle-active' : ''}`}
             aria-label="User profile"
