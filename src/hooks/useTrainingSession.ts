@@ -18,10 +18,45 @@ interface UseTrainingSessionReturn {
   isRecording: boolean;
   isSpeaking: boolean;
   error: string | null;
+  lastAiMessage: string | null;
+  conversationEnding: boolean;
   startSession: (request?: CreateSessionRequest) => Promise<void>;
   stopSession: () => Promise<void>;
   startRecording: () => Promise<void>;
   stopRecording: () => void;
+}
+
+// Phrases that indicate the patient is ending the conversation
+const CONVERSATION_ENDING_PHRASES = [
+  'have a great day',
+  'have a good day',
+  'take care',
+  'thanks for your help',
+  'thank you for your help',
+  'i feel better now',
+  'i feel much better',
+  'that\'s all i needed',
+  'that\'s everything',
+  'i think i\'m good',
+  'i\'m good now',
+  'thanks so much',
+  'thank you so much',
+  'bye',
+  'goodbye',
+  'see you',
+  'i appreciate your help',
+  'you\'ve been very helpful',
+  'that answers my questions',
+  'that answers everything',
+  'i understand now',
+  'that makes sense now',
+  'i\'ll do that',
+  'i\'ll follow those instructions',
+];
+
+function detectConversationEnding(message: string): boolean {
+  const lowerMessage = message.toLowerCase();
+  return CONVERSATION_ENDING_PHRASES.some(phrase => lowerMessage.includes(phrase));
 }
 
 export function useTrainingSession(): UseTrainingSessionReturn {
@@ -30,6 +65,8 @@ export function useTrainingSession(): UseTrainingSessionReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastAiMessage, setLastAiMessage] = useState<string | null>(null);
+  const [conversationEnding, setConversationEnding] = useState(false);
   
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -173,6 +210,10 @@ export function useTrainingSession(): UseTrainingSessionReturn {
       });
       setSession(newSession);
       
+      // Reset conversation ending state for new session
+      setConversationEnding(false);
+      setLastAiMessage(null);
+      
       // 2. Connect WebSocket
       console.log('[WebSocket] Connecting to session:', newSession.id);
       const ws = connectToTrainingConversation(
@@ -185,6 +226,16 @@ export function useTrainingSession(): UseTrainingSessionReturn {
           } else if (data.type === 'error') {
             console.error('[WebSocket Error]:', data.message);
             setError(data.message);
+          } else if (data.type === 'ai_response_text' && data.text) {
+            // Track AI response and detect conversation ending
+            console.log('[WebSocket] AI response text:', data.text);
+            setLastAiMessage(data.text);
+            
+            // Check if the patient is signaling end of conversation
+            if (detectConversationEnding(data.text)) {
+              console.log('[WebSocket] Conversation ending detected!');
+              setConversationEnding(true);
+            }
           }
         },
         handleAudio,
@@ -391,6 +442,8 @@ export function useTrainingSession(): UseTrainingSessionReturn {
     isRecording,
     isSpeaking,
     error,
+    lastAiMessage,
+    conversationEnding,
     startSession,
     stopSession,
     startRecording,

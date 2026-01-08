@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, CheckCircle2, AlertCircle, TrendingUp, Award, Heart, MessageCircle } from 'lucide-react'
+import { X, CheckCircle2, AlertCircle, TrendingUp, Award, Heart, MessageCircle, BookOpen, Pill, Activity } from 'lucide-react'
 import EchoLoader from '@/components/EchoLoader'
 import ProductFeedback from '@/components/ProductFeedback'
 
@@ -46,6 +46,11 @@ interface OSCEEvaluation {
     text: string
     note: string
   }>
+  ideal_clinical_response?: {
+    recommended_treatment: string
+    key_counseling_points: string[]
+    monitoring_plan: string
+  }
   error?: string
 }
 
@@ -53,9 +58,16 @@ interface OSCEFeedbackProps {
   sessionId: string
   onClose: () => void
   viewOnly?: boolean  // If true, fetch saved evaluation instead of creating new one
+  lectureSimulation?: {
+    lecture_id?: string
+    lecture_title?: string
+    scenario_id?: string
+    title?: string
+  } | null
+  onTryAnother?: () => void  // Callback to try another scenario
 }
 
-export default function OSCEFeedback({ sessionId, onClose, viewOnly = false }: OSCEFeedbackProps) {
+export default function OSCEFeedback({ sessionId, onClose, viewOnly = false, lectureSimulation, onTryAnother }: OSCEFeedbackProps) {
   const [evaluation, setEvaluation] = useState<OSCEEvaluation | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -85,6 +97,9 @@ export default function OSCEFeedback({ sessionId, onClose, viewOnly = false }: O
       const data = viewOnly 
         ? await apiClient.getSessionEvaluation(sessionId)
         : await apiClient.evaluateTrainingSession(sessionId)
+      
+      console.log('[OSCEFeedback] Evaluation data received:', data)
+      console.log('[OSCEFeedback] ideal_clinical_response:', data?.ideal_clinical_response)
       
       setEvaluation(data)
     } catch (err) {
@@ -356,28 +371,165 @@ export default function OSCEFeedback({ sessionId, onClose, viewOnly = false }: O
           </div>
           )}
 
+          {/* The Correct Clinical Answer - What a Real Pharmacist Would Do */}
+          {evaluation.ideal_clinical_response && (
+            evaluation.ideal_clinical_response.recommended_treatment ||
+            (evaluation.ideal_clinical_response.key_counseling_points && evaluation.ideal_clinical_response.key_counseling_points.length > 0) ||
+            evaluation.ideal_clinical_response.monitoring_plan
+          ) ? (
+            <div className="border-2 border-[#344895] rounded-xl overflow-hidden">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-[#344895] to-[#1A1F71] p-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                    <BookOpen className="h-7 w-7 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">💡 The Correct Answer</h3>
+                    <p className="text-sm text-white/80">What a pharmacist should have done in this scenario</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 bg-gradient-to-br from-[#344895]/5 to-[#3DD6D0]/10 space-y-5">
+                {/* Diagnosis / Recommended Treatment */}
+                {evaluation.ideal_clinical_response.recommended_treatment && (
+                  <div className="bg-white rounded-lg p-5 border-l-4 border-[#344895] shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Pill className="h-5 w-5 text-[#344895]" />
+                      <h4 className="font-bold text-[#344895]">Diagnosis & Recommended Treatment</h4>
+                    </div>
+                    <p className="text-gray-700 leading-relaxed whitespace-pre-line">
+                      {evaluation.ideal_clinical_response.recommended_treatment}
+                    </p>
+                  </div>
+                )}
+
+                {/* What the Pharmacist Should Say - Key Counseling Points */}
+                {evaluation.ideal_clinical_response.key_counseling_points && 
+                 evaluation.ideal_clinical_response.key_counseling_points.length > 0 && (
+                  <div className="bg-white rounded-lg p-5 border-l-4 border-[#3DD6D0] shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <MessageCircle className="h-5 w-5 text-[#3DD6D0]" />
+                      <h4 className="font-bold text-[#344895]">What the Pharmacist Should Say</h4>
+                    </div>
+                    <p className="text-sm text-gray-500 mb-3">Key counseling points to communicate to the patient:</p>
+                    <ul className="space-y-3">
+                      {evaluation.ideal_clinical_response.key_counseling_points.map((point, idx) => (
+                        <li key={idx} className="flex items-start gap-3 text-gray-700 bg-[#3DD6D0]/5 p-3 rounded-lg">
+                          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#3DD6D0] text-white text-sm font-bold flex items-center justify-center">{idx + 1}</span>
+                          <span className="leading-relaxed">{point}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Follow-up & Monitoring */}
+                {evaluation.ideal_clinical_response.monitoring_plan && (
+                  <div className="bg-white rounded-lg p-5 border-l-4 border-amber-500 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Activity className="h-5 w-5 text-amber-500" />
+                      <h4 className="font-bold text-[#344895]">Follow-up & Monitoring Plan</h4>
+                    </div>
+                    <p className="text-gray-700 leading-relaxed whitespace-pre-line">
+                      {evaluation.ideal_clinical_response.monitoring_plan}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Fallback when no ideal response - show scenario context */
+            <div className="border-2 border-gray-200 rounded-xl p-6 bg-gray-50">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center">
+                  <BookOpen className="h-5 w-5 text-gray-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-700">Clinical Reference</h3>
+                  <p className="text-sm text-gray-500">Scenario: {evaluation.scenario_title}</p>
+                </div>
+              </div>
+              <p className="text-gray-600 text-sm">
+                Review the feedback above to understand what could be improved. Practice more scenarios to build your clinical communication skills.
+              </p>
+            </div>
+          )}
+
         </div>
 
         {/* Footer Actions */}
-        <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-4 rounded-b-lg flex justify-end gap-3">
+        <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-4 rounded-b-lg flex flex-col sm:flex-row justify-between gap-3">
+          {/* Left side - Print */}
           <button
             onClick={() => window.print()}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors"
+            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors text-sm"
           >
             Print Report
           </button>
-          <button
-            onClick={() => {
-              if (shouldShowFeedback) {
-                setShowProductFeedback(true)
-              } else {
-                onClose()
-              }
-            }}
-            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-          >
-            Continue Training
-          </button>
+          
+          {/* Right side - Navigation buttons */}
+          <div className="flex gap-3">
+            {/* Try Another Scenario - Only show for lecture simulations */}
+            {lectureSimulation?.lecture_id && onTryAnother && (
+              <button
+                onClick={() => {
+                  // Mark this scenario as practiced before navigating
+                  if (lectureSimulation.scenario_id && lectureSimulation.lecture_id) {
+                    const practiceKey = `practiced_simulations_${lectureSimulation.lecture_id}`
+                    const practiced = JSON.parse(localStorage.getItem(practiceKey) || '[]')
+                    if (!practiced.includes(lectureSimulation.scenario_id)) {
+                      practiced.push(lectureSimulation.scenario_id)
+                      localStorage.setItem(practiceKey, JSON.stringify(practiced))
+                    }
+                    // Also store the timestamp
+                    const historyKey = `simulation_history_${lectureSimulation.lecture_id}`
+                    const history = JSON.parse(localStorage.getItem(historyKey) || '{}')
+                    history[lectureSimulation.scenario_id] = {
+                      practicedAt: new Date().toISOString(),
+                      sessionId: sessionId
+                    }
+                    localStorage.setItem(historyKey, JSON.stringify(history))
+                  }
+                  onTryAnother()
+                }}
+                className="px-5 py-2 bg-gradient-to-r from-[#3DD6D0] to-[#2BB5AF] text-[#1A1F71] rounded-lg hover:shadow-lg transition-all font-medium flex items-center gap-2"
+              >
+                🔄 Try Another Scenario
+              </button>
+            )}
+            
+            <button
+              onClick={() => {
+                // Mark scenario as practiced before closing
+                if (lectureSimulation?.scenario_id && lectureSimulation?.lecture_id) {
+                  const practiceKey = `practiced_simulations_${lectureSimulation.lecture_id}`
+                  const practiced = JSON.parse(localStorage.getItem(practiceKey) || '[]')
+                  if (!practiced.includes(lectureSimulation.scenario_id)) {
+                    practiced.push(lectureSimulation.scenario_id)
+                    localStorage.setItem(practiceKey, JSON.stringify(practiced))
+                  }
+                  const historyKey = `simulation_history_${lectureSimulation.lecture_id}`
+                  const history = JSON.parse(localStorage.getItem(historyKey) || '{}')
+                  history[lectureSimulation.scenario_id] = {
+                    practicedAt: new Date().toISOString(),
+                    sessionId: sessionId
+                  }
+                  localStorage.setItem(historyKey, JSON.stringify(history))
+                }
+                
+                if (shouldShowFeedback) {
+                  setShowProductFeedback(true)
+                } else {
+                  onClose()
+                }
+              }}
+              className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+            >
+              {lectureSimulation?.lecture_id ? 'Done' : 'Continue Training'}
+            </button>
+          </div>
         </div>
       </div>
 
