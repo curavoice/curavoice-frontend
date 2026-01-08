@@ -73,7 +73,7 @@ export default function EchoLoader({ message, context = 'general', imageSrc }: E
   }, [isReloading, imageSrc, reloadImages])
   
   // Determine which image to use - recalculated on every render to pick up reloadImageIndex changes
-  const iconImageSrc = imageSrc || (isReloading ? reloadImages[reloadImageIndex] : (isEvaluating ? '/assets/echo-evaluator.jpeg' : undefined))
+  const iconImageSrc = imageSrc || (isReloading ? reloadImages[reloadImageIndex] : (isEvaluating ? '/assets/echo-evaluator.png' : undefined))
 
   useEffect(() => {
     // Set random message on client side only (prevents hydration mismatch)

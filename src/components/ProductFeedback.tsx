@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { X, ThumbsUp, ThumbsDown, MessageSquare } from 'lucide-react'
 import EchoIcon from '@/components/icons/Echo'
-import { useAuth } from '@/hooks/useAuth'
+import { apiClient } from '@/lib/api'
 
 interface ProductFeedbackProps {
   sessionId: string
@@ -11,7 +11,6 @@ interface ProductFeedbackProps {
 }
 
 export default function ProductFeedback({ sessionId, onClose }: ProductFeedbackProps) {
-  const { user } = useAuth()
   const [rating, setRating] = useState<'positive' | 'negative' | null>(null)
   const [comment, setComment] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -23,11 +22,12 @@ export default function ProductFeedback({ sessionId, onClose }: ProductFeedbackP
     setIsSubmitting(true)
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const token = apiClient.getToken()
       const response = await fetch(`${API_URL}/api/v1/feedback/product`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-ID': user?.id || '',
+          'Authorization': token ? `Bearer ${token}` : '',
         },
         body: JSON.stringify({
           session_id: sessionId,
@@ -161,5 +161,3 @@ export default function ProductFeedback({ sessionId, onClose }: ProductFeedbackP
     </div>
   )
 }
-
-

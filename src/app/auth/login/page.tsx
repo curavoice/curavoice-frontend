@@ -160,16 +160,24 @@ export default function LoginPage() {
               </div>
 
               {/* Remember me: 151x16 */}
-              <div className="login-checkbox-row">
-                <Checkbox 
-                  id="remember" 
-                  checked={rememberMe} 
-                  onCheckedChange={(v) => setRememberMe(Boolean(v))} 
-                  className="w-4 h-4"
-                />
-                <label htmlFor="remember" className="text-black font-lato font-bold text-[11px] leading-[1.2] select-none">
-                  Remember me
-                </label>
+              <div className="flex items-center justify-between">
+                <div className="login-checkbox-row">
+                  <Checkbox 
+                    id="remember" 
+                    checked={rememberMe} 
+                    onCheckedChange={(v) => setRememberMe(Boolean(v))} 
+                    className="w-4 h-4"
+                  />
+                  <label htmlFor="remember" className="text-black font-lato font-bold text-[11px] leading-[1.2] select-none">
+                    Remember me
+                  </label>
+                </div>
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-[#344895] hover:underline font-lato font-bold text-[11px] leading-[1.2]"
+                >
+                  Forgot password?
+                </Link>
               </div>
 
               {/* Sign In Button: 282x52 */}

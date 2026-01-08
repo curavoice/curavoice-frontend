@@ -5,6 +5,7 @@ import { ThemeProvider } from 'next-themes'
 import { Toaster } from '@/components/ui/toaster'
 import { useState } from 'react'
 import { UploadProvider } from '@/contexts/UploadContext'
+import ChunkLoadErrorHandler from '@/components/ChunkLoadErrorHandler'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -23,6 +24,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+        <ChunkLoadErrorHandler />
         <UploadProvider>
           {children}
         </UploadProvider>
@@ -31,5 +33,4 @@ export function Providers({ children }: { children: React.ReactNode }) {
     </QueryClientProvider>
   )
 }
-
 

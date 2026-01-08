@@ -40,6 +40,8 @@ export default function LibraryPage() {
     const [showRelevanceWarning, setShowRelevanceWarning] = useState(false)
     const [relevanceWarningMessage, setRelevanceWarningMessage] = useState('')
     const [pendingLectureId, setPendingLectureId] = useState<string | null>(null)
+    const [deletingLectureId, setDeletingLectureId] = useState<string | null>(null)
+    const [navigatingToId, setNavigatingToId] = useState<string | null>(null)
 
     // Redirect if not authenticated
     useEffect(() => {
@@ -47,6 +49,15 @@ export default function LibraryPage() {
             router.push('/auth/login')
         }
     }, [authLoading, user, router])
+
+    // Reset stale upload state on page load (only keep if actively uploading/processing)
+    useEffect(() => {
+        if (uploadState.status === 'success' || uploadState.status === 'error') {
+            // Reset completed/failed uploads when revisiting the page
+            resetUpload()
+            setShowUploadSection(false)
+        }
+    }, []) // Only run on mount
 
     // Fetch lectures on mount
     useEffect(() => {
@@ -180,10 +191,18 @@ export default function LibraryPage() {
             pollLectureStatus(data.id)
 
         } catch (error) {
+            // Check if it's a network error (Failed to fetch)
+            const errorMessage = error instanceof Error ? error.message : 'Upload failed'
+            const isNetworkError = errorMessage.toLowerCase().includes('failed to fetch') || 
+                                   errorMessage.toLowerCase().includes('network') ||
+                                   errorMessage.toLowerCase().includes('connection')
+            
             setUploadState(prev => ({
                 ...prev,
                 status: 'error',
-                error: error instanceof Error ? error.message : 'Upload failed',
+                error: isNetworkError 
+                    ? `Unable to connect to server. Please check your connection and try again.`
+                    : errorMessage,
             }))
         }
     }
@@ -253,6 +272,7 @@ export default function LibraryPage() {
     const viewArtifacts = (lectureId?: string) => {
         const id = lectureId || uploadState.lectureId
         if (id) {
+            setNavigatingToId(id)
             router.push(`/artifacts/${id}`)
         }
     }
@@ -267,6 +287,8 @@ export default function LibraryPage() {
         const token = apiClient.getToken()
         if (!token) return
 
+        setDeletingLectureId(lectureId)
+        
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
             const response = await fetch(`${apiUrl}/api/v1/lectures/${lectureId}`, {
@@ -283,6 +305,8 @@ export default function LibraryPage() {
         } catch (error) {
             console.error('Delete failed:', error)
             alert('Failed to delete lecture')
+        } finally {
+            setDeletingLectureId(null)
         }
     }
 
@@ -423,9 +447,21 @@ export default function LibraryPage() {
                                 </div>
 
                                 {uploadState.error && (
-                                    <div className="flex items-center gap-2 mt-3 text-red-300">
-                                        <AlertCircle className="w-4 h-4" />
-                                        <span className="text-sm">{uploadState.error}</span>
+                                    <div className="mt-3 p-3 bg-red-500/20 border border-red-400/30 rounded-lg">
+                                        <div className="flex items-center gap-2 text-red-300">
+                                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                            <span className="text-sm">{uploadState.error}</span>
+                                        </div>
+                                        {uploadState.error.includes('Unable to connect') && (
+	                                            <button
+	                                                onClick={() => {
+	                                                    setUploadState(prev => ({ ...prev, error: null, status: 'idle' }))
+	                                                }}
+	                                                className="mt-2 text-xs text-[#3DD6D0] hover:underline"
+	                                            >
+	                                                Try again
+                                            </button>
+                                        )}
                                     </div>
                                 )}
 
@@ -501,9 +537,20 @@ export default function LibraryPage() {
                         {lectures.map((lecture) => (
                             <div
                                 key={lecture.id}
-                                onClick={() => viewArtifacts(lecture.id)}
-                                className="bg-white rounded-2xl border-2 border-gray-100 hover:border-[#3DD6D0] p-5 cursor-pointer transition-all hover:shadow-lg group"
+                                onClick={() => !navigatingToId && !deletingLectureId && viewArtifacts(lecture.id)}
+                                className={`bg-white rounded-2xl border-2 p-5 transition-all group relative ${
+                                    navigatingToId === lecture.id || deletingLectureId === lecture.id
+                                        ? 'border-[#3DD6D0] opacity-70 cursor-wait'
+                                        : 'border-gray-100 hover:border-[#3DD6D0] cursor-pointer hover:shadow-lg'
+                                }`}
                             >
+                                {/* Loading overlay */}
+                                {(navigatingToId === lecture.id || deletingLectureId === lecture.id) && (
+                                    <div className="absolute inset-0 bg-white/50 rounded-2xl flex items-center justify-center z-10">
+                                        <Loader2 className="w-8 h-8 text-[#3DD6D0] animate-spin" />
+                                    </div>
+                                )}
+                                
                                 <div className="flex items-start gap-4">
                                     <div className="text-3xl">{getFileTypeIcon(lecture.file_type)}</div>
                                     <div className="flex-1 min-w-0">
@@ -526,7 +573,11 @@ export default function LibraryPage() {
                                             <span className="text-xs text-gray-400 uppercase">{lecture.file_type}</span>
                                         </div>
                                     </div>
-                                    <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-[#3DD6D0] group-hover:translate-x-1 transition-all" />
+                                    <ChevronRight className={`w-5 h-5 transition-all ${
+                                        navigatingToId === lecture.id 
+                                            ? 'text-[#3DD6D0]' 
+                                            : 'text-gray-300 group-hover:text-[#3DD6D0] group-hover:translate-x-1'
+                                    }`} />
                                 </div>
 
                                 {/* Quick Actions */}
@@ -538,10 +589,19 @@ export default function LibraryPage() {
                                         </span>
                                         <button
                                             onClick={(e) => deleteLecture(e, lecture.id, lecture.title)}
-                                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                                            title="Delete lecture"
+                                            disabled={deletingLectureId === lecture.id}
+                                            className={`p-1.5 rounded-lg transition-colors ${
+                                                deletingLectureId === lecture.id
+                                                    ? 'text-gray-300 cursor-wait'
+                                                    : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
+                                            }`}
+                                            title={deletingLectureId === lecture.id ? 'Deleting...' : 'Delete lecture'}
                                         >
-                                            <Trash2 className="w-4 h-4" />
+                                            {deletingLectureId === lecture.id ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                <Trash2 className="w-4 h-4" />
+                                            )}
                                         </button>
                                     </div>
                                 )}
@@ -549,10 +609,19 @@ export default function LibraryPage() {
                                     <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-end">
                                         <button
                                             onClick={(e) => deleteLecture(e, lecture.id, lecture.title)}
-                                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                                            title="Delete lecture"
+                                            disabled={deletingLectureId === lecture.id}
+                                            className={`p-1.5 rounded-lg transition-colors ${
+                                                deletingLectureId === lecture.id
+                                                    ? 'text-gray-300 cursor-wait'
+                                                    : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
+                                            }`}
+                                            title={deletingLectureId === lecture.id ? 'Deleting...' : 'Delete lecture'}
                                         >
-                                            <Trash2 className="w-4 h-4" />
+                                            {deletingLectureId === lecture.id ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                <Trash2 className="w-4 h-4" />
+                                            )}
                                         </button>
                                     </div>
                                 )}
@@ -570,11 +639,15 @@ export default function LibraryPage() {
                             <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
                                 <span className="text-2xl">⚠️</span>
                             </div>
-                            <h3 className="text-xl font-bold text-gray-800">Content Warning</h3>
+                            <h3 className="text-xl font-bold text-gray-800">Content Review</h3>
                         </div>
 
-                        <p className="text-gray-600 mb-6">
-                            {relevanceWarningMessage || "This content doesn't appear to be related to healthcare or pharmacy. Are you sure you want to continue?"}
+                        <p className="text-gray-600 mb-4">
+                            {relevanceWarningMessage || "This content doesn't appear to be pharmacy or healthcare educational material (like lecture notes, textbook chapters, or clinical case studies)."}
+                        </p>
+                        
+                        <p className="text-gray-500 text-sm mb-6">
+                            CuraVoice works best with pharmacy/healthcare study materials. You can still upload this file, but the generated flashcards and quizzes may not be as effective.
                         </p>
 
                         <div className="flex gap-3">
@@ -586,9 +659,9 @@ export default function LibraryPage() {
                             </button>
                             <button
                                 onClick={confirmRelevanceWarning}
-                                className="flex-1 px-4 py-3 bg-[#3DD6D0] text-white rounded-xl font-medium hover:bg-[#2BB5AF] transition-colors"
+                                className="flex-1 px-4 py-3 bg-[#3DD6D0] text-[#1A1F71] rounded-xl font-bold hover:bg-[#2BB5AF] transition-colors"
                             >
-                                Continue Anyway
+                                Upload Anyway
                             </button>
                         </div>
                     </div>

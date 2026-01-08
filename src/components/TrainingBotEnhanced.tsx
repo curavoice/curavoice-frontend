@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { Mic, MicOff, RotateCcw, AlertCircle, Award } from 'lucide-react'
+import { Mic, MicOff, RotateCcw, AlertCircle, Award, Loader2 } from 'lucide-react'
 import { useTrainingSession } from '@/hooks/useTrainingSession'
 import OSCEFeedback from './OSCEFeedback'
 import { formatScenarioTitle } from '@/lib/utils'
@@ -26,16 +27,20 @@ interface TrainingBotProps {
     medications: string[]
     expected_actions: string[]
     lecture_title: string
+    lecture_id?: string
+    scenario_id?: string
   }
 }
 
 export default function TrainingBotEnhanced({ scenarios, lectureSimulation }: TrainingBotProps) {
+  const router = useRouter()
   const {
     session,
     isConnected,
     isRecording,
     isSpeaking,
     error,
+    conversationEnding,
     startSession,
     stopSession,
     startRecording,
@@ -55,6 +60,7 @@ export default function TrainingBotEnhanced({ scenarios, lectureSimulation }: Tr
   const [medicalCategory, setMedicalCategory] = useState<string>('random')
   const [customScenario, setCustomScenario] = useState<string>('')
   const [useCustomScenario, setUseCustomScenario] = useState(false)
+  const [isStartingSession, setIsStartingSession] = useState(false)
 
   // Timer effect
   useEffect(() => {
@@ -84,16 +90,21 @@ export default function TrainingBotEnhanced({ scenarios, lectureSimulation }: Tr
 
   const handleStartSession = async () => {
     console.log('[TrainingBot] Starting session with mode:', mode, 'category:', medicalCategory, 'custom:', customScenario);
+    
+    // Prevent double-clicks
+    if (isStartingSession) return;
+    setIsStartingSession(true);
 
-    // Prepare session request
-    const sessionRequest: any = {
-      mode: mode,
-    };
+    try {
+      // Prepare session request
+      const sessionRequest: any = {
+        mode: mode,
+      };
 
-    // Check if this is a lecture-based simulation
-    if (lectureSimulation) {
-      // Build a comprehensive scenario from the lecture content
-      const lectureScenario = `
+      // Check if this is a lecture-based simulation
+      if (lectureSimulation) {
+        // Build a comprehensive scenario from the lecture content
+        const lectureScenario = `
 LECTURE-BASED PATIENT SIMULATION
 ================================
 Lecture: ${lectureSimulation.lecture_title}
@@ -116,27 +127,30 @@ ${lectureSimulation.expected_actions?.map((a: string) => `- ${a}`).join('\n') ||
 INSTRUCTIONS: Role-play as this patient. Stay in character. Express the concerns naturally. Respond realistically to the healthcare provider's questions and counseling.
 `.trim();
 
-      sessionRequest.custom_scenario = lectureScenario;
-      setSelectedScenario(lectureSimulation.title);
-      setSelectedCategory('lecture');
-    } else if (useCustomScenario && customScenario.trim()) {
-      sessionRequest.custom_scenario = customScenario.trim();
-      setSelectedScenario('Custom Scenario');
-      setSelectedCategory(null); // Clear category for custom scenarios
-    } else if (mode === 'nonclinical') {
-      setSelectedScenario('Nonclinical Scenario');
-      setSelectedCategory('nonclinical');
-    } else if (mode === 'clinical' && medicalCategory !== 'random') {
-      sessionRequest.medical_category = medicalCategory;
-      const categoryDisplayName = formatCategoryName(medicalCategory);
-      setSelectedScenario(categoryDisplayName);
-      setSelectedCategory(medicalCategory); // Store the category
-    } else {
-      setSelectedScenario('Random Scenario');
-      setSelectedCategory('random');
-    }
+        sessionRequest.custom_scenario = lectureScenario;
+        setSelectedScenario(lectureSimulation.title);
+        setSelectedCategory('lecture');
+      } else if (useCustomScenario && customScenario.trim()) {
+        sessionRequest.custom_scenario = customScenario.trim();
+        setSelectedScenario('Custom Scenario');
+        setSelectedCategory(null); // Clear category for custom scenarios
+      } else if (mode === 'nonclinical') {
+        setSelectedScenario('Nonclinical Scenario');
+        setSelectedCategory('nonclinical');
+      } else if (mode === 'clinical' && medicalCategory !== 'random') {
+        sessionRequest.medical_category = medicalCategory;
+        const categoryDisplayName = formatCategoryName(medicalCategory);
+        setSelectedScenario(categoryDisplayName);
+        setSelectedCategory(medicalCategory); // Store the category
+      } else {
+        setSelectedScenario('Random Scenario');
+        setSelectedCategory('random');
+      }
 
-    await startSession(sessionRequest);
+      await startSession(sessionRequest);
+    } finally {
+      setIsStartingSession(false);
+    }
   }
 
   const handleToggleMicrophone = () => {
@@ -271,8 +285,8 @@ INSTRUCTIONS: Role-play as this patient. Stay in character. Express the concerns
             <div className="voice-bot-scenario-selection">
               {/* Lecture Mode - Simplified UI */}
               {lectureSimulation ? (
-                <div className="text-center py-6">
-                  <div className="mb-8">
+                <div className="flex flex-col items-center justify-center py-8">
+                  <div className="mb-8 text-center">
                     <div className="w-20 h-20 mx-auto bg-[#344895]/10 rounded-full flex items-center justify-center mb-4">
                       <span className="text-4xl">📖</span>
                     </div>
@@ -283,13 +297,21 @@ INSTRUCTIONS: Role-play as this patient. Stay in character. Express the concerns
 
                   <button
                     onClick={() => handleStartSession()}
-                    className="px-8 py-4 bg-gradient-to-r from-[#3DD6D0] to-[#2BB5AF] text-[#1A1F71] rounded-full font-montserrat font-bold text-lg hover:shadow-lg transition-all"
+                    disabled={isStartingSession}
+                    className="px-8 py-4 bg-gradient-to-r from-[#3DD6D0] to-[#2BB5AF] text-[#1A1F71] rounded-full font-montserrat font-bold text-lg hover:shadow-lg transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[240px]"
                   >
-                    🎙️ Start Voice Practice
+                    {isStartingSession ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      <>🎙️ Start Voice Practice</>
+                    )}
                   </button>
 
-                  <p className="text-sm text-gray-500 mt-4">
-                    The patient will start the conversation
+                  <p className="text-sm text-gray-500 mt-4 text-center">
+                    {isStartingSession ? 'Setting up your session...' : 'The patient will start the conversation'}
                   </p>
                 </div>
               ) : (
@@ -384,14 +406,21 @@ INSTRUCTIONS: Role-play as this patient. Stay in character. Express the concerns
                   <div className="mb-6">
                     <button
                       onClick={() => handleStartSession()}
-                      disabled={useCustomScenario && !customScenario.trim()}
-                      className="w-full px-6 py-3 bg-[#344895] text-white rounded-lg font-semibold hover:bg-[#1A1F71] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={(useCustomScenario && !customScenario.trim()) || isStartingSession}
+                      className="w-full px-6 py-3 bg-[#344895] text-white rounded-lg font-semibold hover:bg-[#1A1F71] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[48px]"
                     >
-                      {useCustomScenario
-                        ? 'Start Custom Scenario'
-                        : mode === 'clinical'
-                          ? `Start ${medicalCategory === 'random' ? 'Random' : formatScenarioTitle(medicalCategory)} Scenario`
-                          : 'Start Nonclinical Scenario'}
+                      {isStartingSession ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Connecting...
+                        </>
+                      ) : useCustomScenario ? (
+                        'Start Custom Scenario'
+                      ) : mode === 'clinical' ? (
+                        `Start ${medicalCategory === 'random' ? 'Random' : formatScenarioTitle(medicalCategory)} Scenario`
+                      ) : (
+                        'Start Nonclinical Scenario'
+                      )}
                     </button>
                   </div>
 
@@ -467,6 +496,28 @@ INSTRUCTIONS: Role-play as this patient. Stay in character. Express the concerns
                 <p className="voice-bot-status-text">{getStatusMessage()}</p>
               </div>
 
+              {/* Conversation Ending Prompt */}
+              {conversationEnding && timer >= 35 && !isEndingSession && (
+                <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
+                      <Award className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-green-800 text-sm">Consultation Complete!</p>
+                      <p className="text-xs text-green-600">The patient seems satisfied. Ready to get your feedback?</p>
+                    </div>
+                    <button
+                      onClick={handleViewFeedback}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold text-sm transition-colors flex items-center gap-2"
+                    >
+                      <Award className="w-4 h-4" />
+                      Get Feedback
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Controls */}
               <div className="voice-bot-controls">
                 {/* Microphone Button (Main Control) */}
@@ -497,31 +548,45 @@ INSTRUCTIONS: Role-play as this patient. Stay in character. Express the concerns
                   >
                     <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6" />
                   </button>
-                  {(completedSessionId || session) && timer >= 35 && (
+                  
+                  {/* Get Feedback Button - Improved UI */}
+                  {(completedSessionId || session) && timer >= 35 ? (
                     <button
                       onClick={handleViewFeedback}
                       disabled={isEndingSession}
-                      className={`voice-bot-control-button bg-indigo-600 hover:bg-indigo-700 text-white ${isEndingSession ? 'opacity-50 cursor-wait' : ''}`}
-                      aria-label="View feedback"
-                      title={isEndingSession ? "Ending session..." : "Get performance feedback"}
+                      className={`
+                        voice-bot-control-button relative overflow-hidden
+                        ${conversationEnding 
+                          ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 ring-2 ring-green-300 ring-offset-2' 
+                          : 'bg-gradient-to-r from-[#344895] to-[#1A1F71] hover:from-[#1A1F71] hover:to-[#0D0F3F]'
+                        } 
+                        text-white shadow-lg
+                        ${isEndingSession ? 'opacity-70 cursor-wait' : 'hover:scale-105 transition-all duration-200'}
+                      `}
+                      aria-label="Get performance feedback"
+                      title={isEndingSession ? "Processing..." : "End session & get AI feedback"}
                     >
                       {isEndingSession ? (
-                        <div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 border-b-2 border-white"></div>
+                        <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin" />
                       ) : (
-                        <Award className="w-5 h-5 sm:w-6 sm:h-6" />
+                        <>
+                          <Award className="w-5 h-5 sm:w-6 sm:h-6" />
+                          {conversationEnding && (
+                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-ping" />
+                          )}
+                        </>
                       )}
                     </button>
-                  )}
-                  {(completedSessionId || session) && timer < 35 && (
+                  ) : (completedSessionId || session) && timer < 35 ? (
                     <button
                       disabled
-                      className="voice-bot-control-button bg-gray-400 cursor-not-allowed opacity-50"
-                      aria-label="View feedback"
-                      title={`Minimum 30 seconds of conversation required (${timer}s elapsed)`}
+                      className="voice-bot-control-button bg-gray-300 cursor-not-allowed opacity-60 text-gray-500"
+                      aria-label="Feedback not available yet"
+                      title={`Talk for ${35 - timer} more seconds to unlock feedback`}
                     >
                       <Award className="w-5 h-5 sm:w-6 sm:h-6" />
                     </button>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
@@ -587,10 +652,27 @@ INSTRUCTIONS: Role-play as this patient. Stay in character. Express the concerns
       {showFeedback && (completedSessionId || session?.id) && (
         <OSCEFeedback
           sessionId={completedSessionId || session!.id}
-          onClose={() => setShowFeedback(false)}
+          onClose={() => {
+            setShowFeedback(false)
+            // If this was a lecture simulation, clear the localStorage and go back to lecture
+            if (lectureSimulation?.lecture_id) {
+              localStorage.removeItem('lecture_simulation')
+              router.push(`/artifacts/${lectureSimulation.lecture_id}?tab=simulation`)
+            }
+          }}
+          lectureSimulation={lectureSimulation ? {
+            lecture_id: lectureSimulation.lecture_id,
+            lecture_title: lectureSimulation.lecture_title,
+            scenario_id: lectureSimulation.scenario_id,
+            title: lectureSimulation.title
+          } : null}
+          onTryAnother={lectureSimulation?.lecture_id ? () => {
+            setShowFeedback(false)
+            localStorage.removeItem('lecture_simulation')
+            router.push(`/artifacts/${lectureSimulation.lecture_id}?tab=simulation`)
+          } : undefined}
         />
       )}
     </div>
   )
 }
-

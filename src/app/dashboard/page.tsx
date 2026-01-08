@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { apiClient } from '@/lib/api'
 import DashboardNav from '@/components/DashboardNav'
 import EchoLoader from '@/components/EchoLoader'
 import Image from 'next/image'
@@ -102,10 +103,13 @@ export default function DashboardPage() {
       if (!user?.id || authLoading) return
 
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const headers = {
-        'X-User-ID': user.id,
-        'Authorization': `Bearer ${localStorage.getItem('curavoice_token')}`
+      const token = apiClient.getToken()
+      if (!token) {
+        router.push('/auth/login')
+        return
       }
+
+      const headers = { Authorization: `Bearer ${token}` }
 
       try {
         const [statsRes, quizRes, insightsRes, lecturesRes, streakRes, feedbackRes] = await Promise.all([
@@ -117,7 +121,24 @@ export default function DashboardPage() {
           fetch(`${API_URL}/api/v1/statistics/recent-feedback`, { headers }).catch(() => null)
         ])
 
-        let newStats = { ...stats }
+        const unauthorized =
+          [statsRes, quizRes, insightsRes, lecturesRes, streakRes, feedbackRes].some(
+            (r) => r && (r.status === 401 || r.status === 403)
+          )
+        if (unauthorized) {
+          apiClient.clearTokens()
+          router.push('/auth/login')
+          return
+        }
+
+        let newStats = {
+          quizAverage: 0,
+          quizzesCompleted: 0,
+          lecturesCount: 0,
+          voiceSessions: 0,
+          empathyScore: 0,
+          practiceHours: 0,
+        }
 
         if (statsRes?.ok) {
           const data = await statsRes.json()
@@ -179,7 +200,7 @@ export default function DashboardPage() {
     }
 
     fetchData()
-  }, [user, authLoading])
+  }, [user, authLoading, router])
 
   const getTrendIcon = (trend: 'up' | 'down' | 'neutral') => {
     if (trend === 'up') return <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 text-green-400" />

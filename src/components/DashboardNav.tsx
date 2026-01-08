@@ -14,6 +14,7 @@ export default function DashboardNav() {
   const isDashboard = pathname === '/dashboard'
   const isProfile = pathname === '/profile'
   const isLibrary = pathname === '/upload'
+  const isNaplex = pathname === '/naplex' || pathname.startsWith('/naplex/')
 
   const handleProfileClick = () => {
     router.push('/profile')
@@ -45,18 +46,28 @@ export default function DashboardNav() {
         <div className="dashboard-nav-links">
           <Link
             href="/training"
+            data-tour="nav-training"
             className={`dashboard-nav-link ${isTraining ? 'dashboard-nav-link-active' : ''}`}
           >
             Training
           </Link>
           <Link
+            href="/naplex"
+            data-tour="nav-naplex"
+            className={`dashboard-nav-link ${isNaplex ? 'dashboard-nav-link-active' : ''}`}
+          >
+            NAPLEX Prep
+          </Link>
+          <Link
             href="/upload"
+            data-tour="nav-library"
             className={`dashboard-nav-link ${isLibrary ? 'dashboard-nav-link-active' : ''}`}
           >
             Library
           </Link>
           <Link
             href="/dashboard"
+            data-tour="nav-dashboard"
             className={`dashboard-nav-link ${isDashboard ? 'dashboard-nav-link-active' : ''}`}
           >
             Dashboard
@@ -67,13 +78,23 @@ export default function DashboardNav() {
         <div className="dashboard-mobile-menu">
           <Link
             href="/training"
+            data-tour="nav-training"
             className={`dashboard-mobile-nav-link ${isTraining ? 'text-[#3DD6D0]' : ''}`}
           >
             Training
           </Link>
           <span className="text-gray-400">|</span>
           <Link
+            href="/naplex"
+            data-tour="nav-naplex"
+            className={`dashboard-mobile-nav-link ${isNaplex ? 'text-[#3DD6D0]' : ''}`}
+          >
+            NAPLEX
+          </Link>
+          <span className="text-gray-400">|</span>
+          <Link
             href="/upload"
+            data-tour="nav-library"
             className={`dashboard-mobile-nav-link ${isLibrary ? 'text-[#3DD6D0]' : ''}`}
           >
             Library
@@ -81,6 +102,7 @@ export default function DashboardNav() {
           <span className="text-gray-400">|</span>
           <Link
             href="/dashboard"
+            data-tour="nav-dashboard"
             className={`dashboard-mobile-nav-link ${isDashboard ? 'text-[#3DD6D0]' : ''}`}
           >
             Dashboard
@@ -91,6 +113,7 @@ export default function DashboardNav() {
         <div className="dashboard-user-section">
           <button
             onClick={handleProfileClick}
+            data-tour="nav-profile"
             className={`dashboard-user-circle ${isProfile ? 'dashboard-user-circle-active' : ''}`}
             aria-label="User profile"
           >

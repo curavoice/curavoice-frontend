@@ -1,7 +1,11 @@
 // Get API URL and ensure it doesn't have a trailing slash or /api/v1 prefix
 const getApiUrl = (): string => {
-  // Production backend URL (Railway)
-  const url = process.env.NEXT_PUBLIC_API_URL || 'https://curavoice-backend-production-3ea1.up.railway.app'
+  const defaultUrl =
+    process.env.NODE_ENV === 'development'
+      ? 'http://localhost:8000'
+      : 'https://curavoice-backend-production-3ea1.up.railway.app'
+
+  const url = process.env.NEXT_PUBLIC_API_URL || defaultUrl
   // Remove trailing slash
   const cleanUrl = url.replace(/\/$/, '')
 
@@ -38,6 +42,11 @@ export interface RegisterRequest {
   email: string
   password: string
   full_name: string
+}
+
+export interface PasswordResetResponse {
+  success: boolean
+  message: string
 }
 
 class ApiClient {
@@ -197,15 +206,43 @@ class ApiClient {
       console.log(`[${timestamp}] [API] Response status:`, response.status);
 
       if (!response.ok) {
-        let errorDetail = 'Registration failed';
-        try {
-          const error = await response.json()
-          errorDetail = error.detail || error.message || errorDetail;
-          console.error(`[${timestamp}] [API] ❌ Registration failed:`, error);
-        } catch (parseError) {
-          console.error(`[${timestamp}] [API] ❌ Failed to parse error response:`, parseError);
-          errorDetail = `HTTP ${response.status}: ${response.statusText}`;
+        const raw = await response.text().catch(() => '')
+        let parsed: any = null
+        if (raw) {
+          try {
+            parsed = JSON.parse(raw)
+          } catch {
+            parsed = null
+          }
         }
+
+        let errorDetail: string = 'Registration failed'
+        if (parsed) {
+          const detail = parsed.detail ?? parsed.message
+          if (typeof detail === 'string') {
+            errorDetail = detail
+          } else if (Array.isArray(detail)) {
+            // FastAPI / Pydantic validation errors (422)
+            const messages = detail
+              .map((d: any) => d?.msg || d?.message)
+              .filter(Boolean)
+            if (messages.length) errorDetail = messages.join(' ')
+            else errorDetail = 'Invalid registration details. Please check your inputs and try again.'
+          } else if (detail != null) {
+            errorDetail = JSON.stringify(detail)
+          } else {
+            errorDetail = JSON.stringify(parsed)
+          }
+
+          console.error(`[${timestamp}] [API] ❌ Registration failed:`, parsed);
+        } else if (raw) {
+          errorDetail = raw
+          console.error(`[${timestamp}] [API] ❌ Registration failed (non-JSON):`, raw);
+        } else {
+          errorDetail = `HTTP ${response.status}: ${response.statusText}`
+          console.error(`[${timestamp}] [API] ❌ Registration failed (empty body)`);
+        }
+
         throw new Error(errorDetail)
       }
 
@@ -226,6 +263,66 @@ class ApiClient {
       console.error(`[${timestamp}] [API] ❌ Registration error:`, error);
       throw error;
     }
+  }
+
+  async forgotPassword(email: string): Promise<PasswordResetResponse> {
+    const response = await fetch(`${this.getApiBase()}/auth/forgot-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    })
+
+    const data = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      const detail = data?.detail || data?.message || `HTTP ${response.status}: ${response.statusText}`
+      throw new Error(detail)
+    }
+
+    return data as PasswordResetResponse
+  }
+
+  async validateResetToken(token: string): Promise<PasswordResetResponse> {
+    const response = await fetch(`${this.getApiBase()}/auth/validate-reset-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ token }),
+    })
+
+    const data = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      const detail = data?.detail || data?.message || `HTTP ${response.status}: ${response.statusText}`
+      throw new Error(detail)
+    }
+
+    return data as PasswordResetResponse
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<PasswordResetResponse> {
+    const response = await fetch(`${this.getApiBase()}/auth/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ token, new_password: newPassword }),
+    })
+
+    const data = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      const detail = data?.detail || data?.message || `HTTP ${response.status}: ${response.statusText}`
+      throw new Error(detail)
+    }
+
+    return data as PasswordResetResponse
   }
 
   async getCurrentUser(): Promise<AuthResponse['user']> {
@@ -305,4 +402,3 @@ class ApiClient {
 }
 
 export const apiClient = new ApiClient(API_URL)
-
